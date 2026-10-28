@@ -1,4 +1,3 @@
-# Add your given and family names, affiliation and ORCID under "authors" before the first release.
 cff-version: 1.2.0
 message: "If you use abm-io, please cite it as below."
 title: "abm-io: checkpoints, agent exchange and visualization files for agent-based simulators"
@@ -6,6 +5,8 @@ type: software
 license: Apache-2.0
 repository-code: "https://github.com/markomanka/abm-io"
 version: "0.1.0"
+date-released: 2026-10-28
+doi: 10.5281/zenodo.23731697
 authors:
   - given-names: "Marco"
     family-names: "Manca"

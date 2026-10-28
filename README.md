@@ -1,6 +1,7 @@
 # abm-io
 
 [![CI](https://github.com/markomanka/abm-io/actions/workflows/ci.yml/badge.svg)](https://github.com/markomanka/abm-io/actions/workflows/ci.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23731697.svg)](https://doi.org/10.5281/zenodo.23731697)
 
 Checkpoints, exchange of agents between processes, and files for visualization, for agent-based simulators of
 multicellular biology. abm-io is built for BioDynaMo and PhysiCell first, and is meant to be adopted by other
@@ -58,7 +59,8 @@ Contributions are welcome; see `CONTRIBUTING.md`. Report vulnerabilities private
 
 ## Citing
 
-See `CITATION.cff`. Each release will receive a DOI through Zenodo.
+Cite abm-io with the DOI https://doi.org/10.5281/zenodo.23731697, which always resolves to the latest version. Each
+release also has its own DOI; version 0.1.0 is https://doi.org/10.5281/zenodo.23731698. `CITATION.cff` has the details.
 
 ## Licence
 
