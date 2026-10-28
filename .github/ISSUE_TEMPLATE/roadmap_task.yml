@@ -1,0 +1,30 @@
+name: Roadmap task
+description: Work that belongs to a milestone of docs/ROADMAP.md
+body:
+  - type: dropdown
+    id: milestone
+    attributes:
+      label: Milestone
+      options:
+        - 0 · Test bed and baselines
+        - 1 · Schema and generator
+        - 2 · Checkpoints
+        - 3 · Exchange
+        - 4 · Visualization files
+        - 5 · Adapters
+        - 6 · Release and packaging
+        - Decisions
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What changes when this is done?
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: The checks that prove it (tests, CI jobs, benchmark thresholds).

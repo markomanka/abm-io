@@ -1,0 +1,52 @@
+# Performance gate on a dedicated self-hosted machine. Idle until HAS_BENCHMARK_RUNNER is 'true'.
+name: Benchmarks
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      record:
+        description: Record a new baseline instead of comparing
+        type: boolean
+        default: false
+  pull_request:
+    types: [labeled, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    # Self-hosted runners must never run code from forks: same-repository branches only, and only when labelled.
+    if: >-
+      vars.HAS_BENCHMARK_RUNNER == 'true' &&
+      (github.event_name != 'pull_request' ||
+       (github.event.pull_request.head.repo.full_name == github.repository &&
+        contains(github.event.pull_request.labels.*.name, 'run-benchmarks')))
+    runs-on: [self-hosted, linux, benchmark]
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build (Release)
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DABMIO_BUILD_TESTS=OFF
+          cmake --build build --target abmio_bench
+      - name: Run
+        run: build/abmio_bench > bench-results.json
+      - name: Compare with baseline (fails on slowdowns above 5%)
+        if: ${{ !inputs.record }}
+        run: python3 scripts/compare_bench.py "bench/baseline/$(hostname -s).json" bench-results.json --tolerance 0.05 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Record baseline
+        if: ${{ inputs.record }}
+        run: python3 scripts/compare_bench.py "bench/baseline/$(hostname -s).json" bench-results.json --record
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: benchmark-results
+          path: |
+            bench-results.json
+            bench/baseline/*.json
+          retention-days: 30

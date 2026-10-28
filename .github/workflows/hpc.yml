@@ -1,0 +1,33 @@
+# Multi-node MPI runs on an HPC allocation. Idle until HAS_HPC_RUNNER is 'true'.
+# Edit scripts/hpc/multinode.sbatch for the site's modules and partitions first.
+name: Multi-node (HPC)
+
+on:
+  schedule:
+    - cron: '0 5 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  multinode:
+    if: vars.HAS_HPC_RUNNER == 'true'
+    runs-on: [self-hosted, linux, hpc]
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build with the cluster's MPI
+        run: |
+          cmake -S . -B build-hpc -DCMAKE_BUILD_TYPE=Release -DABMIO_ENABLE_MPI=ON -DABMIO_BUILD_BENCHMARKS=OFF
+          cmake --build build-hpc --target abmio_mpi_test
+      - name: Submit and wait
+        run: sbatch --wait scripts/hpc/multinode.sbatch
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: hpc-logs
+          path: hpc-*.log
+          retention-days: 30

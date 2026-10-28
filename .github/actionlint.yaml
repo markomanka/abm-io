@@ -1,0 +1,5 @@
+# Labels of the self-hosted runners used by benchmarks.yml and hpc.yml (docs/QUALITY-GATES.md).
+self-hosted-runner:
+  labels:
+    - benchmark
+    - hpc

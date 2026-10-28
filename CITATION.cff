@@ -1,0 +1,46 @@
+# Add your given and family names, affiliation and ORCID under "authors" before the first release.
+cff-version: 1.2.0
+message: "If you use abm-io, please cite it as below."
+title: "abm-io: checkpoints, agent exchange and visualization files for agent-based simulators"
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/markomanka/abm-io"
+version: "0.1.0"
+authors:
+  - given-names: "Marco"
+    family-names: "Manca"
+    affiliation: "SCImPULSE Foundation"
+    orcid: "https://orcid.org/0000-0002-7869-2620"
+    alias: markomanka
+keywords:
+  - agent-based simulation
+  - multicellular biology
+  - checkpointing
+  - high-performance computing
+references:
+  - type: article
+    title: "Open Benchmarking for Cell-Based Multiscale Models: Lessons from a Community Initiative"
+    authors:
+      - family-names: Ntiniakou
+        given-names: Thaleia
+      - name: "and others"
+    journal: bioRxiv
+    year: 2025
+    doi: 10.1101/2025.07.16.664358
+  - type: article
+    title: "TeraAgent: A Distributed Agent-Based Simulation Engine for Simulating Half a Trillion Agents"
+    authors:
+      - family-names: Breitwieser
+        given-names: Lukas
+      - family-names: Hesam
+        given-names: Ahmad
+      - family-names: Yağlıkçı
+        given-names: A. Giray
+      - family-names: Sadrosadati
+        given-names: Mohammad
+      - family-names: Rademakers
+        given-names: Fons
+      - family-names: Mutlu
+        given-names: Onur
+    year: 2026
+    url: "https://arxiv.org/abs/2509.24063"

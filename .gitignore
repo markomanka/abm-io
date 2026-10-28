@@ -1,0 +1,9 @@
+build/
+build-*/
+/coverage/
+bench-results.json
+*.profraw
+crash-*
+leak-*
+timeout-*
+oom-*

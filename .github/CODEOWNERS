@@ -1,0 +1,6 @@
+# Code owners are requested for review on matching paths (set by scripts/init-repo.sh).
+*            @markomanka
+/include/    @markomanka
+/src/        @markomanka
+/.github/    @markomanka
+/scripts/    @markomanka

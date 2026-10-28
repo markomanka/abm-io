@@ -1,0 +1,15 @@
+# Weekly update proposals for pinned actions and the fuzzing base image.
+# Review before merging: prefer releases that are at least two weeks old.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+  - package-ecosystem: docker
+    directory: /.clusterfuzzlite
+    schedule:
+      interval: weekly
