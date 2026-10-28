@@ -11,6 +11,7 @@ the repository variables below.
 | --- | --- | --- | --- | --- |
 | Policies (no global allocator hooks, SPDX headers) and formatting | `ci.yml` · Policy and format | GitHub-hosted | every push and PR | all |
 | Build matrix: Ubuntu 22.04 and 24.04 × GCC and Clang; macOS 15 | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
+| Build and tests with conda-forge packages (`environment.yml`): Ubuntu 24.04 and macOS 15 | `conda.yml` | GitHub-hosted | every push and PR | packaging |
 | Unit, corruption, codec and physics tests (CTest) | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
 | AddressSanitizer + UBSan | `ci.yml` · Sanitizers | GitHub-hosted | every push and PR | all |
 | MPI correctness with MPICH and Open MPI, 2 ranks | `ci.yml` · MPI | GitHub-hosted | every push and PR | exchange |
@@ -22,7 +23,8 @@ the repository variables below.
 | Benchmarks against a stored baseline (±5%) | `benchmarks.yml` | your benchmark machine | nightly; PRs labelled `run-benchmarks` | performance |
 | Multi-node MPI | `hpc.yml` | your HPC allocation | weekly; manual | exchange at scale |
 
-`CI passed` aggregates all `ci.yml` jobs; branch protection requires it. All third-party actions are
+`CI passed` aggregates all `ci.yml` jobs; branch protection requires it. `conda.yml` is not part of it yet:
+it can join once it has run reliably, so that a shortage of macOS runners cannot block merges. All third-party actions are
 pinned to commit hashes of releases at least two weeks old; Dependabot proposes updates weekly.
 
 ## Repository variables

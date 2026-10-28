@@ -1,0 +1,16 @@
+# Everything needed to build and test abm-io, from conda-forge.
+#
+#   conda env create -f environment.yml     (or mamba / micromamba)
+#   conda activate abm-io
+#
+# For the MPI test, also install openmpi or mpich.
+name: abm-io
+channels:
+  - conda-forge
+dependencies:
+  - cxx-compiler
+  - cmake >=3.20
+  - ninja
+  - pkg-config
+  - lz4-c
+  - gtest
