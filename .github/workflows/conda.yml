@@ -1,0 +1,43 @@
+# Build and test with every dependency from conda-forge (environment.yml): the route
+# BioDynaMo uses, and the basis of a future conda-forge package (docs/QUALITY-GATES.md).
+name: Conda
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build and test (conda-forge, ${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-file: environment.yml
+          init-shell: bash
+          cache-environment: true
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DABMIO_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build build
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

@@ -41,13 +41,21 @@ simulators connect.
 
 ## Build and test
 
+With conda-forge, on any platform (the route BioDynaMo uses):
+
 ```bash
-# Ubuntu:      sudo apt-get install cmake ninja-build pkg-config liblz4-dev libgtest-dev
-# macOS:       brew install cmake ninja lz4 googletest pkgconf
-# conda-forge: conda install -c conda-forge cmake ninja pkg-config lz4-c gtest
+conda env create -f environment.yml     # or mamba / micromamba
+conda activate abm-io
 cmake -S . -B build -G Ninja
 cmake --build build
 ctest --test-dir build --output-on-failure
+```
+
+With system packages instead, install the dependencies, then run the same three commands:
+
+```bash
+sudo apt-get install cmake ninja-build pkg-config liblz4-dev libgtest-dev   # Ubuntu
+brew install cmake ninja lz4 googletest pkgconf                            # macOS (Homebrew)
 ```
 
 `CONTRIBUTING.md` covers sanitizer, fuzzing and MPI builds.
