@@ -52,8 +52,9 @@ layer (PhysiCell runs on shared memory), or the exchange without containers.
 Every agent or behaviour type has a **type description**:
 
 - a **qualified name**, such as `bdm::Cell`, unique within a simulator;
-- a **type identifier**: a 64-bit hash of the qualified name, so it is stable across runs, processes and machines
-  without a central registry;
+- a **type identifier**: by default a 64-bit hash of the qualified name, so it is stable across runs, processes
+  and machines without a central registry. A type description may instead fix its identifier explicitly, which
+  keeps it stable when the type is renamed;
 - an optional **base type**, whose fields come first;
 - a **schema version**, incremented when the fields change;
 - the ordered list of **fields**.
@@ -65,7 +66,7 @@ Every agent or behaviour type has a **type description**:
 | Name | Unique within the type, including its base types |
 | Kind | Scalar (integer, floating point, boolean), fixed-size array (such as a 3D position), variable-size array, string, reference to another agent, nested record, or list of polymorphic records (such as behaviours) |
 | Element type and count | For example `float64 × 3` |
-| Unit | Optional, for example `um` or `min`; carried into files and used for MultiCellDS mapping |
+| Unit | Optional, for example `um` or `min`; carried into files unchanged, never converted, checked for consistency when loading, and used for MultiCellDS mapping |
 | Roles | Any combination of *checkpoint*, *exchange* and *export*; a field without roles is never stored or sent |
 
 Roles let one description serve every purpose. A position is needed everywhere; a cached neighbour list is
@@ -115,8 +116,9 @@ Checkpoints are HDF5 files, readable by any HDF5 tool, including `h5py`, without
 
 - **Restart guarantee:** restoring a checkpoint reproduces every field with the *checkpoint* role exactly, and
   a simulation continued from a checkpoint matches the uninterrupted run, given the same random streams.
-- **Parallel runs:** each process writes its own agents. With parallel HDF5 the processes write one shared file
-  collectively; without it, one file per process plus an index file. The reader accepts both.
+- **Parallel runs:** each process writes its own agents. One file per process plus an index file is always
+  available; with parallel HDF5, the processes may instead write one shared file collectively. The reader
+  accepts both.
 
 ## Exchange between processes
 
@@ -162,14 +164,24 @@ library.
 The library follows semantic versioning. File formats carry their own version, independent of the library's,
 and readers keep supporting older format versions.
 
-## Open questions for review
+## Decisions
 
-1. **Type identifiers:** a hash of the qualified name (proposed) or numbers assigned by a registry?
-2. **Parallel checkpoints:** require parallel HDF5, or always support one file per process as well (proposed)?
-3. **The generator:** Python with Clang's parser (`libclang`, packaged on conda-forge; proposed), or C++ with
-   Clang's LibTooling?
-4. **Where the generator lives:** in this repository (proposed), so its output and the library change together?
-5. **Units:** record units as metadata only (proposed), or convert to a common system on writing?
+The questions this contract left open for review, settled in October 2026:
+
+1. **Type identifiers:** a 64-bit hash of the qualified name, with no registry. Simulators, and implementations
+   plugged in from outside this repository, can define types without coordinating with anyone. A type
+   description may fix its identifier explicitly, so a renamed type keeps reading old files. With 64 bits,
+   collisions are negligible; a reader that finds two types with the same identifier reports it and stops.
+2. **Parallel checkpoints:** one file per process plus an index file is always supported; a single shared file
+   through parallel HDF5 is optional, never required. This avoids depending on parallel HDF5, maps directly onto
+   the object storage of commercial clouds, and avoids a single-file bottleneck at large scale.
+3. **The generator:** Python with Clang's parser (`libclang`, packaged on conda-forge). It gives the full C++
+   parse, and Python is quicker to write and maintain than LibTooling, and the language of the planned analysis
+   and front-end tools.
+4. **Where the generator lives:** in this repository, so its output and the library change together.
+5. **Units:** recorded as metadata only, never converted on writing, so files keep exactly what the simulator
+   computed. Readers, and the model descriptions planned for multi-simulator studies, check units for
+   consistency when loading.
 
 ## References
 
