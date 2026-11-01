@@ -16,6 +16,7 @@ option(ABMIO_BUILD_FUZZERS "Build fuzz harnesses (libFuzzer with Clang, replay d
 option(ABMIO_ENABLE_MPI "Build the multi-rank MPI test" OFF)
 option(ABMIO_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(ABMIO_COVERAGE "Instrument for coverage" OFF)
+option(ABMIO_BUILD_GENERATOR_TESTS "Test abm-gen (needs Python 3 with the libclang and PyYAML packages)" OFF)
 set(ABMIO_SANITIZE "" CACHE STRING "Sanitizers, e.g. address,undefined or thread")
 
 # --- LZ4: pkg-config first, plain search as fallback
@@ -70,6 +71,33 @@ if(ABMIO_BUILD_TESTS)
   target_include_directories(abmio_tests PRIVATE tests)
   target_link_libraries(abmio_tests PRIVATE abmio GTest::gtest_main abmio_flags)
   gtest_discover_tests(abmio_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS unit)
+  if(ABMIO_BUILD_GENERATOR_TESTS)
+    # abm-gen on the miniature BioDynaMo in tests/generator: the Python tests,
+    # and a C++ test compiled against the generated header.
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    set(ABMIO_GEN_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests/generator)
+    set(ABMIO_GEN_OUT ${CMAKE_CURRENT_BINARY_DIR}/generated/generated.h)
+    add_custom_command(
+      OUTPUT ${ABMIO_GEN_OUT}
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/abm-gen/abm_gen.py
+              --out ${ABMIO_GEN_OUT} --side ${ABMIO_GEN_DIR}/units.yaml
+              --include bdm_like.h --include my_model.h --include bdm_adapter.h
+              --cxx ${CMAKE_CXX_COMPILER}
+              ${ABMIO_GEN_DIR}/bdm_like.h ${ABMIO_GEN_DIR}/my_model.h
+              -- -I${CMAKE_CURRENT_SOURCE_DIR}/include -I${ABMIO_GEN_DIR}
+      DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/tools/abm-gen/abm_gen.py ${ABMIO_GEN_DIR}/bdm_like.h
+              ${ABMIO_GEN_DIR}/my_model.h ${ABMIO_GEN_DIR}/units.yaml
+      COMMENT "abm-gen: describing the miniature BioDynaMo"
+      VERBATIM)
+    add_executable(abmio_generator_tests tests/generator/generated_test.cc ${ABMIO_GEN_OUT})
+    target_include_directories(abmio_generator_tests PRIVATE ${ABMIO_GEN_DIR}
+                                                             ${CMAKE_CURRENT_BINARY_DIR}/generated)
+    target_link_libraries(abmio_generator_tests PRIVATE abmio GTest::gtest_main abmio_flags)
+    gtest_discover_tests(abmio_generator_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS generator)
+    add_test(NAME abm_gen.python
+             COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${ABMIO_GEN_DIR} -p "test_*.py")
+    set_tests_properties(abm_gen.python PROPERTIES LABELS generator)
+  endif()
 
   add_executable(abmio_physics_tests tests/physics_test.cc)
   target_include_directories(abmio_physics_tests PRIVATE tests)

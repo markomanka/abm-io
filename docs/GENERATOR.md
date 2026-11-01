@@ -91,17 +91,32 @@ bdm::Cell:
 
 A field without an entry has no unit and all roles. Units are recorded, never converted.
 
-## The build
+## Running it
 
-`abm-gen --out generated.h [--side units.yaml] --compile-commands build/compile_commands.json header.h...`
+`abm-gen` needs Python 3 with the `libclang` and `PyYAML` packages: `pip install -r
+tools/abm-gen/requirements.txt` installs the versions CI uses, checked by hash.
+
+```
+python3 tools/abm-gen/abm_gen.py --out generated.h [--side units.yaml] [--include header.h ...]
+    [--compile-commands build/compile_commands.json] header.h ... [-- compiler flags]
+```
+
+It asks the C++ compiler (`--cxx`, by default `$CXX`) for its include directories, which libclang needs,
+and reports errors with the class and member concerned: a macro naming the wrong base, a class template, an
+unknown entry in the side file, or a header that does not parse.
+
+## The build
 
 CMake regenerates the header when the model's headers or the side file change. For BioDynaMo this hooks into
 `bdm_add_executable` during step 3.
 
 ## Testing
 
-- **In abm-io's CI:** fixture headers that mimic BioDynaMo's classes and macros, with the expected generated
-  header written out by hand; the generated header must also compile and describe valid schemas.
+- **In abm-io's CI:** `tests/generator` holds a miniature BioDynaMo (its macros, its own types, classes with
+  private, static and transient members, and a model in a header of its own) with the expected output. The
+  Python tests compare the output and check every error; a C++ test compiles the generated header and checks
+  that it describes a valid schema and drives the data visitors. `-DABMIO_BUILD_GENERATOR_TESTS=ON` builds
+  them; the CI job "Generator (abm-gen)" runs them.
 - **In BioDynaMo's CI (issue #10):** BioDynaMo's 11 agent and behaviour classes and the 51 in its demos and
   tests. The generated descriptions must match hand-checked ones, and the generated header must compile
   against BioDynaMo. Only there are BioDynaMo and ROOT installed.

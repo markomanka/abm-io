@@ -131,10 +131,30 @@ jobs:
           path: coverage/
           retention-days: 14
 
+  generator:
+    name: Generator (abm-gen)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config liblz4-dev libgtest-dev
+      - name: Python packages for abm-gen (pinned by hash)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install --require-hashes -r tools/abm-gen/requirements.txt
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DABMIO_WARNINGS_AS_ERRORS=ON -DABMIO_BUILD_BENCHMARKS=OFF -DABMIO_BUILD_GENERATOR_TESTS=ON -DPython3_EXECUTABLE="$RUNNER_TEMP/venv/bin/python"
+      - name: Build
+        run: cmake --build build
+      - name: Test the generator
+        run: ctest --test-dir build --output-on-failure -L generator
+
   ci-ok:
     name: CI passed
     if: always()
-    needs: [policy, build-test, sanitizers, mpi, coverage]
+    needs: [policy, build-test, sanitizers, mpi, coverage, generator]
     runs-on: ubuntu-24.04
     steps:
       - name: All required jobs succeeded
