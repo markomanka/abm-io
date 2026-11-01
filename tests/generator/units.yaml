@@ -1,0 +1,8 @@
+# SPDX-License-Identifier: Apache-2.0
+# Units and roles for the miniature BioDynaMo (docs/GENERATOR.md, "the side file").
+bdm::Cell:
+  position: {unit: um}
+  diameter: {unit: um}
+  volume: {unit: um3}
+model::MyCell:
+  concentrations: {unit: uM, roles: [checkpoint, export]}
