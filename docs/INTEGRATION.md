@@ -86,9 +86,14 @@ single function. There is no virtual call per field, and the compiler can inline
 
 - **BioDynaMo:** the generator `abm-gen` reads the model's C++ headers (types marked with BioDynaMo's
   `BDM_AGENT_HEADER` and `BDM_BEHAVIOR_HEADER`) and emits the visitor functions at build time. Members marked
-  transient in the source (`//!`) get no role. User models need no changes.
+  transient in the source (`//!`) are left out. User models need no changes. Its design is in
+  `docs/GENERATOR.md`.
 - **PhysiCell:** a hand-written adapter describes `Cell` and its phenotype, and turns PhysiCell's custom cell
   data, which already carries names and units, into fields.
+
+A simulator's own member types, such as BioDynaMo's `Real3` or `AgentPointer`, are declared once in its
+adapter by specialising `abmio::FieldTraits`; descriptions and data visitors then handle them like built-in
+types.
 
 ### References and polymorphism
 

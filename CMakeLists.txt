@@ -66,7 +66,7 @@ if(ABMIO_BUILD_TESTS)
   find_package(GTest REQUIRED)
   include(GoogleTest)
   add_executable(abmio_tests tests/exchange_test.cc tests/codec_test.cc tests/schema_test.cc
-                           tests/visit_test.cc)
+                           tests/visit_test.cc tests/traits_test.cc)
   target_include_directories(abmio_tests PRIVATE tests)
   target_link_libraries(abmio_tests PRIVATE abmio GTest::gtest_main abmio_flags)
   gtest_discover_tests(abmio_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS unit)
