@@ -2,11 +2,14 @@
 // Data visitors on top of the schema's visitor protocol (abmio/schema.h).
 // VisitFields binds an object to its type's visit function, base types first;
 // VisitElements turns each fixed-size field into one call per element, the
-// form in which the exchange packs and unpacks agents; ElementSizes gives the
-// matching sizes from the type's description, without an object. Only roles
-// select fields: units are never converted, and a narrower stored type
-// applies to files, not to the exchange.
+// form in which the exchange packs and unpacks agents, and skips variable-size
+// fields, records and lists, which travel separately (behaviours, for
+// instance, as records of their own); ElementSizes gives the matching sizes
+// from the type's description, without an object. Only roles select fields:
+// units are never converted, and a narrower stored type applies to files, not
+// to the exchange.
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 #include <vector>
@@ -40,20 +43,36 @@ class PerElement {
 
   template <class M>
   void operator()(const Field&, M& member) {
-    if constexpr (kIsElement<M>) {
+    if constexpr (HasFieldTraits<M>::value) {
+      VisitDeclared(member);
+    } else if constexpr (kIsElement<M>) {
       v_(member);
     } else if constexpr (std::is_array_v<M> || IsStdArray<M>::value) {
       for (auto& element : member) {
         v_(element);
       }
-    } else {
-      static_assert(sizeof(M) == 0,
-                    "VisitElements handles fixed-size fields only: scalars and "
-                    "fixed arrays");
     }
+    // Anything else (vectors, strings, records, lists) has no fixed size and
+    // is skipped, as ElementSizes skips it.
   }
 
  private:
+  template <class M>
+  void VisitDeclared(M& member) {
+    using Traits = FieldTraits<M>;
+    if constexpr (IsFieldReference<M>::value) {
+      uint64_t id = Traits::Load(member);
+      v_(id);
+      Traits::Store(member, id);
+    } else if constexpr (Traits::kKind == Kind::kScalar) {
+      v_(Traits::At(member, 0));
+    } else if constexpr (Traits::kKind == Kind::kArray) {
+      for (std::size_t i = 0; i < Traits::kCount; ++i) {
+        v_(Traits::At(member, i));
+      }
+    }
+  }
+
   V& v_;
 };
 

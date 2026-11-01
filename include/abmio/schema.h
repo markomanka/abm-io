@@ -225,6 +225,26 @@ Status Validate(const Schema& schema, std::string* why = nullptr);
 template <class T>
 struct TypeTraits;
 
+// Customisation point for a simulator's own member types (docs/GENERATOR.md),
+// specialised once per simulator in its adapter. A specialisation provides:
+//   static constexpr Kind kKind;          // kScalar, kArray, kVector or
+//   kPolymorphicList using Element = ...;                  // an arithmetic
+//   element type; for
+//                                         // kPolymorphicList, the described
+//                                         base type
+//   static constexpr uint32_t kCount;     // kArray only: the number of
+//   elements static constexpr bool kReference;     // optional, kScalar only:
+//   an agent identifier
+// and, for data visitors such as the exchange:
+//   static Element& At(M& m, std::size_t i);           // kScalar and kArray
+//   static uint64_t Load(const M& m);                  // references, instead
+//   of At static void Store(M& m, uint64_t id);              // references;
+//   Store(m, Load(m))
+//                                                      // must leave m
+//                                                      unchanged
+template <class M>
+struct FieldTraits;
+
 namespace detail {
 
 template <class T, class = void>
@@ -232,6 +252,18 @@ struct IsDescribed : std::false_type {};
 template <class T>
 struct IsDescribed<T, std::void_t<decltype(TypeTraits<T>::kName)>>
     : std::true_type {};
+
+template <class M, class = void>
+struct HasFieldTraits : std::false_type {};
+template <class M>
+struct HasFieldTraits<M, std::void_t<decltype(FieldTraits<M>::kKind)>>
+    : std::true_type {};
+
+template <class M, class = void>
+struct IsFieldReference : std::false_type {};
+template <class M>
+struct IsFieldReference<M, std::void_t<decltype(FieldTraits<M>::kReference)>>
+    : std::bool_constant<FieldTraits<M>::kReference> {};
 
 template <class T, class = void>
 struct HasExplicitId : std::false_type {};
@@ -329,9 +361,45 @@ FieldDescription ShapeOfContainer() {
 
 // Shape of a member type: kind, element type, count and record type.
 template <class M>
+FieldDescription ShapeOfDeclared() {
+  using Traits = FieldTraits<M>;
+  FieldDescription d;
+  d.kind = Traits::kKind;
+  if constexpr (Traits::kKind == Kind::kPolymorphicList) {
+    static_assert(
+        IsDescribed<typename Traits::Element>::value,
+        "FieldTraits: a polymorphic list's Element must be a described type");
+    d.count = 0;
+    d.record_type = IdOf<typename Traits::Element>();
+  } else {
+    static_assert(Traits::kKind == Kind::kScalar ||
+                      Traits::kKind == Kind::kArray ||
+                      Traits::kKind == Kind::kVector,
+                  "FieldTraits: kKind must be kScalar, kArray, kVector or "
+                  "kPolymorphicList");
+    static_assert(kIsElement<typename Traits::Element>,
+                  "FieldTraits: Element must be an arithmetic type");
+    d.element = ElementOf<typename Traits::Element>();
+    if constexpr (Traits::kKind == Kind::kArray) {
+      d.count = Traits::kCount;
+    } else if constexpr (Traits::kKind == Kind::kVector) {
+      d.count = 0;
+    }
+    if constexpr (IsFieldReference<M>::value) {
+      static_assert(Traits::kKind == Kind::kScalar,
+                    "FieldTraits: references are scalars");
+      d.element = ElementType::kAgentId;
+    }
+  }
+  return d;
+}
+
+template <class M>
 FieldDescription ShapeOf() {
   FieldDescription d;
-  if constexpr (kIsElement<M>) {
+  if constexpr (HasFieldTraits<M>::value) {
+    d = ShapeOfDeclared<M>();
+  } else if constexpr (kIsElement<M>) {
     d.kind = Kind::kScalar;
     d.element = ElementOf<M>();
   } else if constexpr (std::is_array_v<M> && std::rank_v<M> == 1 &&
