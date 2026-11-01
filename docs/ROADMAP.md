@@ -16,9 +16,12 @@ issues are closed and its *done when* check passes.
 | 4 · Visualization files | VTKHDF output for agents (point data) and continuum fields (image data) | Files open in ParaView and PyVista and match the simulation state |
 | 5 · Adapters | BioDynaMo adapter (generated) and PhysiCell adapter (hand-written); MultiCellDS import and export; boundary-behaviour consistency tests | In each simulator, a run continued from a checkpoint matches the uninterrupted run |
 | 6 · Release and packaging | Install rules and CMake package; conda-forge and Spack packages; a DOI per release | Installable from conda-forge and Spack; release 1.0 |
+| R · Rust decoder experiment | The message and delta decoders in Rust behind a C interface, optional and off by default; Kani proofs of memory safety and round trip on bounded inputs; differential fuzzing and benchmarks against the C++ decoders | The proofs pass, fuzzing finds no divergence, and the decision is recorded: the codec core moves to Rust, or stays in C++ with CBMC and fuzzing |
 | Decisions | The open questions of `docs/INTEGRATION.md` | Each decision recorded in its issue |
 
 Milestones 1 to 4 can overlap; milestone 5 needs 1 and 2 for checkpoints, and 3 for exchange.
+Milestone R runs alongside the others: it touches only the decoders, whose message format is fixed
+by tests and fuzzing seeds.
 
 ## Principles
 
