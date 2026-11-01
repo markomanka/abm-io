@@ -16,6 +16,8 @@ const char* ToString(Status s) {
       return "size mismatch";
     case Status::kCorrupt:
       return "corrupt";
+    case Status::kBadSchema:
+      return "bad schema";
   }
   return "unknown";
 }

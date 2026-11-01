@@ -36,7 +36,7 @@ in a documented format.
 
 | Layer | Responsibility | State |
 | --- | --- | --- |
-| Schema | Describes agent and behaviour types: their fields, field types, units and roles | To build (this contract) |
+| Schema | Describes agent and behaviour types: their fields, field types, units and roles | In progress: descriptions, identifiers and the visitor protocol (`include/abmio/schema.h`); the generator next |
 | Codecs | Packs fields into rows or columns; delta encoding against a previous frame; compression | Prototype, tested and fuzzed |
 | Exchange | Packs and unpacks agents for neighbouring processes into receiver-owned memory (arenas) | Prototype, tested with MPI |
 | Containers | Checkpoint files (HDF5) and visualization files (VTKHDF) | To build |
@@ -52,9 +52,9 @@ layer (PhysiCell runs on shared memory), or the exchange without containers.
 Every agent or behaviour type has a **type description**:
 
 - a **qualified name**, such as `bdm::Cell`, unique within a simulator;
-- a **type identifier**: by default a 64-bit hash of the qualified name, so it is stable across runs, processes
-  and machines without a central registry. A type description may instead fix its identifier explicitly, which
-  keeps it stable when the type is renamed;
+- a **type identifier**: by default the 64-bit FNV-1a hash of the qualified name, so it is stable across runs,
+  processes and machines without a central registry, and any tool computes it the same way. A type description
+  may instead fix its identifier explicitly, which keeps it stable when the type is renamed; 0 means *no type*;
 - an optional **base type**, whose fields come first;
 - a **schema version**, incremented when the fields change;
 - the ordered list of **fields**.
@@ -64,20 +64,25 @@ Every agent or behaviour type has a **type description**:
 | Property | Meaning |
 | --- | --- |
 | Name | Unique within the type, including its base types |
-| Kind | Scalar (integer, floating point, boolean), fixed-size array (such as a 3D position), variable-size array, string, reference to another agent, nested record, or list of polymorphic records (such as behaviours) |
-| Element type and count | For example `float64 × 3` |
+| Kind | Scalar, fixed-size array (such as a 3D position), variable-size array, string, nested record, or list of polymorphic records (such as behaviours) |
+| Element type and count | For example `float64 × 3`: integers, floating point, booleans, characters, or agent identifiers for references to other agents |
+| Stored as | Optional narrower element type of the same category for files and streams, such as `float32` for a `float64` member; precision only, never units |
 | Unit | Optional, for example `um` or `min`; carried into files unchanged, never converted, checked for consistency when loading, and used for MultiCellDS mapping |
 | Roles | Any combination of *checkpoint*, *exchange* and *export*; a field without roles is never stored or sent |
+| Ontology term | Optional, for example from the Cell Ontology or the Relation Ontology; types and relations carry one too |
 
 Roles let one description serve every purpose. A position is needed everywhere; a cached neighbour list is
 transient and has no role; a field used only for analysis can be *export* without being sent between processes.
 
 ### How a simulator describes its types
 
-The adapter provides, for each type, a **visitor function**: a template that calls the visitor once per field,
-in declaration order, with the field's name, a reference to the member and its roles. The library's visitors
-implement packing, unpacking, writing, reading and comparison on top of that single function. There is no
-virtual call per field, and the compiler can inline everything.
+The adapter specialises `abmio::TypeTraits` for each type: the qualified name, the schema version, the base
+type, and a **visitor function**, a template that calls the visitor once per field, in declaration order, with
+the field's name and properties (roles, unit, term, stored type) and a **pointer to the member**. Pointers
+rather than references let the library describe a type without constructing an object (a BioDynaMo agent
+cannot be constructed outside a running simulation), while its data visitors bind the object themselves. The
+library's visitors implement description, packing, unpacking, writing, reading and comparison on top of that
+single function. There is no virtual call per field, and the compiler can inline everything.
 
 - **BioDynaMo:** the generator `abm-gen` reads the model's C++ headers (types marked with BioDynaMo's
   `BDM_AGENT_HEADER` and `BDM_BEHAVIOR_HEADER`) and emits the visitor functions at build time. Members marked
@@ -91,6 +96,20 @@ virtual call per field, and the compiler can inline everything.
   After loading or receiving, the simulator resolves identifiers back to agents.
 - Each stored object carries its type identifier. Lists of behaviours are stored as lists of
   (type identifier, record) pairs, so different behaviour types can share one list.
+
+### Agent identifiers
+
+Every agent carries a 64-bit identifier, unique across processes for the whole run; 0 means *no agent*. abm-io
+never reuses identifiers: process *r* of *n* takes *first + r*, *first + r + n*, and so on, without coordination.
+After a restart, *first* is one more than the largest identifier in the checkpoint, so the number of processes
+may change. A simulator may reuse identifiers at its users' choice, provided a generation counter keeps them
+unique.
+
+### Relations
+
+Persistent relations between agents, such as adhesion or synapses, are **edge tables**: a source and a target
+agent identifier per edge, followed by attribute fields. A relation has a name and an optional ontology term.
+Lineage needs no edge table: a parent reference is a column of the agent type.
 
 ### Schema evolution
 
