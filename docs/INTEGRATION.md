@@ -38,7 +38,7 @@ in a documented format.
 | --- | --- | --- |
 | Schema | Describes agent and behaviour types: their fields, field types, units and roles | In progress: descriptions, identifiers and the visitor protocol (`include/abmio/schema.h`); the generator next |
 | Codecs | Packs fields into rows or columns; delta encoding against a previous frame; compression | Prototype, tested and fuzzed |
-| Exchange | Packs and unpacks agents for neighbouring processes into receiver-owned memory (arenas) | Prototype, tested with MPI |
+| Exchange | Packs and unpacks agents for neighbouring processes into receiver-owned memory (arenas) | Prototype, tested with MPI; packs the fields with the exchange role through the visitor protocol |
 | Containers | Checkpoint files (HDF5) and visualization files (VTKHDF) | To build |
 | Adapters | Connect a simulator: BioDynaMo (generated), PhysiCell (hand-written) | To build |
 
