@@ -11,6 +11,11 @@ publish = false
 # No third-party crates in the decoder: the dependency list stays empty.
 [dependencies]
 
+# `kani` is set by Kani's compiler when it proves the harnesses in
+# src/properties.rs; cargo does not know the name by itself.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [lib]
 name = "abmio_codec"
 crate-type = ["staticlib", "rlib"]

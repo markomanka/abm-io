@@ -1,0 +1,52 @@
+# Proves the Rust decoder's properties with Kani (milestone R of docs/ROADMAP.md):
+# memory safety on any input within the declared bounds, and the round trip.
+# The proofs are slow, so they run nightly and on pull requests that touch the
+# crate, not on every change; "CI passed" does not depend on them. Each harness
+# is a job of its own, so one that does not finish cannot hide the others.
+name: Kani proofs
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  pull_request:
+    paths:
+      - 'rust/**'
+      - '.github/workflows/kani.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proofs:
+    name: ${{ matrix.harness }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        harness:
+          - decompressing_is_memory_safe
+          - decoding_is_memory_safe_for_small_claims
+          - the_shuffle_is_reversible_for_any_message
+          - the_round_trip_restores_a_plain_message
+          - the_round_trip_restores_a_shuffled_message
+          - the_round_trip_restores_a_message_encoded_against_another
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Kani
+        run: |
+          cargo install --locked kani-verifier --version 0.56.0
+          cargo kani setup
+
+      - name: Prove ${{ matrix.harness }}
+        run: |
+          cargo kani --manifest-path rust/Cargo.toml --harness ${{ matrix.harness }} \
+            --solver cadical --output-format terse

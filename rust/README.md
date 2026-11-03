@@ -24,6 +24,12 @@ toolchain.
 
 The crate has **no third-party dependencies**: `Cargo.lock` holds the crate itself and nothing else.
 
+- `src/properties.rs`: the properties the decoder must have, written as plain functions that panic if they do
+  not hold: decoding never panics whatever the bytes, a rejected frame leaves no output, unshuffling a
+  shuffled message restores it, and a frame built from a message decodes back to exactly that message. Kani
+  proves them for every input within the bounds the harnesses declare; the same functions also run over
+  enumerated inputs in the crate's tests, so they are exercised wherever Kani is not installed.
+
 ## Building and testing it
 
 ```bash
@@ -35,3 +41,41 @@ ctest --test-dir build -L rust  # the two decoders compared on the same inputs
 
 The comparison feeds both decoders frames from the encoder, over several shapes of data, and random and
 corrupted bytes, and requires the same status and the same output from each.
+
+The proofs need Kani, which brings its own model checker:
+
+```bash
+cargo install --locked kani-verifier && cargo kani setup
+cargo kani --manifest-path rust/Cargo.toml
+```
+
+They run nightly and on pull requests that touch this crate (`.github/workflows/kani.yml`), not on every
+change, because they are slow, and each harness runs as a job of its own, so one that does not finish cannot
+hide the others.
+
+The decoder is proved one layer at a time: the LZ4 block, the frame, the shuffle, and the round trip over
+each path. The bounds are small on purpose: symbolic execution costs grow quickly with the size of the
+input, and a decoder's mistakes live in its first few bytes.
+
+### What is proved, and what is not
+
+Six harnesses pass: the LZ4 block decoder is memory-safe for every one of the 2^32 four-byte blocks against
+a four-byte output; decoding is memory-safe for every 18-byte frame whose header claims at most eight bytes;
+unshuffling a shuffled message restores it; and a frame built from a message decodes back to exactly that
+message, plain, shuffled, and encoded against another message.
+
+Two things are **not** proved, and rest on the crate's tests, the comparison with the C++ decoder and
+fuzzing:
+
+- frames whose header claims between nine bytes and the compression bound, since the decoder allocates a
+  buffer of the claimed size and a symbolic allocation is what a solver struggles with;
+- that a header claiming more than its payload could produce is always rejected. A harness over a symbolic
+  64-bit size failed at a small unwind bound and did not finish at a larger one, so the property is asserted
+  over a list of forged sizes in the tests instead.
+
+Finding bounds a solver can carry took four attempts, which is itself part of what the experiment set out to
+measure. A first version proved the whole pipeline in one harness and did not finish within ninety minutes.
+Proving each layer separately settled the shuffle and the round trips at once. The memory-safety harnesses
+needed their allocations bounded before they would finish, and the forged-size harness was abandoned. The
+pattern is consistent: proofs are affordable where the control flow is determined, and expensive where
+symbolic bytes decide both the branching and the size of an allocation.
