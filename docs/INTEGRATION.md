@@ -207,6 +207,15 @@ The questions this contract left open for review, settled in October 2026:
    computed. Readers, and the model descriptions planned for multi-simulator studies, check units for
    consistency when loading.
 
+## Keeping later ideas possible
+
+Two things abm-io does not do today would be expensive to retrofit and cheap to allow for: a part of a
+simulation computed by a trained model instead of a solver, and measurements from a running experiment
+flowing into a simulation. [LEARNED-OPERATIONS.md](LEARNED-OPERATIONS.md) records what each would need. The
+one point that bears on this contract now: an operation that declares which fields it reads and which it
+writes can be replaced by a learned one without the engine knowing the difference, so operations deserve the
+same discipline as fields.
+
 ## References
 
 1. Ntiniakou T, Osborne J, Zhao J, et al. *Open Benchmarking for Cell-Based Multiscale Models: Lessons from a
