@@ -159,8 +159,10 @@ mod proofs {
     /// A header claiming more than the payload could possibly produce is
     /// rejected, whatever the rest of the frame says, and nothing is
     /// allocated on the way.
+    // Nine at least: comparing the four-byte magic and copying the eight-byte
+    // size are loops of their own.
     #[kani::proof]
-    #[kani::unwind(4)]
+    #[kani::unwind(10)]
     fn a_forged_size_is_rejected() {
         let mut frame = [0u8; 18];
         frame[0..4].copy_from_slice(b"ABDZ");
