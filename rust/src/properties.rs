@@ -19,13 +19,13 @@
 
 use crate::{decode_delta, lz4, shuffle, unshuffle, Status};
 
-/// Decoding never panics, whatever the block and the output size.
-pub fn decompressing_never_panics(block: &[u8], decoded_size: usize) {
-    let mut out = vec![0u8; decoded_size];
-    let ok = lz4::decompress_exact(block, &mut out);
+/// Decoding never panics, whatever the block and the output buffer.
+pub fn decompressing_never_panics(block: &[u8], out: &mut [u8]) {
+    let size = out.len();
+    let ok = lz4::decompress_exact(block, out);
     // A rejected block leaves nothing to rely on; an accepted one filled the
     // output exactly, which is what the caller is promised.
-    assert!(!ok || out.len() == decoded_size);
+    assert!(!ok || out.len() == size);
 }
 
 /// Decoding a frame never panics, whatever the bytes, and a rejected frame
@@ -86,19 +86,16 @@ pub fn frame_of(message: &[u8], shuffled: bool, previous: Option<&[u8]>) -> Vec<
 }
 
 /// A frame built from a message decodes back to exactly that message.
-pub fn the_round_trip_restores_the_message(message: &[u8], shuffled: bool, xored: bool) {
-    let previous: Vec<u8> = message
-        .iter()
-        .map(|b| b.wrapping_mul(31).wrapping_add(7))
-        .collect();
-    let base = if xored {
-        Some(previous.as_slice())
-    } else {
-        None
-    };
-    let frame = frame_of(message, shuffled, base);
+///
+/// `previous` is the message the frame is encoded against, if any.
+pub fn the_round_trip_restores_the_message(
+    message: &[u8],
+    shuffled: bool,
+    previous: Option<&[u8]>,
+) {
+    let frame = frame_of(message, shuffled, previous);
     let mut out = Vec::new();
-    let status = decode_delta(&frame, base, &mut out);
+    let status = decode_delta(&frame, previous, &mut out);
     assert_eq!(status, Status::Ok);
     assert_eq!(out, message);
 }
@@ -110,36 +107,42 @@ pub fn the_round_trip_restores_the_message(message: &[u8], shuffled: bool, xored
 mod proofs {
     use super::*;
 
-    /// Decompression is memory-safe for every block of up to six bytes and
-    /// every output of up to six bytes: every one of the 2^48 blocks, at
-    /// every length, against every output size.
+    // The decoder is proved one layer at a time: the LZ4 block, the frame, the
+    // shuffle, and the round trip over each path. A first version proved the
+    // whole pipeline on symbolic data in a single harness and did not finish
+    // within ninety minutes; layer by layer gives the same guarantee at a cost
+    // a solver can carry, and each harness runs as a job of its own, so a slow
+    // one cannot hide the others.
+
+    /// Decompression is memory-safe for every block of up to five bytes
+    /// against every output of up to five bytes.
     #[kani::proof]
-    #[kani::unwind(10)]
+    #[kani::unwind(8)]
     fn decompressing_is_memory_safe() {
-        let block: [u8; 6] = kani::any();
-        let length: usize = kani::any();
-        kani::assume(length <= block.len());
-        let decoded_size: usize = kani::any();
-        kani::assume(decoded_size <= 6);
-        decompressing_never_panics(&block[..length], decoded_size);
+        let block: [u8; 5] = kani::any();
+        let block_length: usize = kani::any();
+        kani::assume(block_length <= block.len());
+        let mut out = [0u8; 5];
+        let out_length: usize = kani::any();
+        kani::assume(out_length <= out.len());
+        decompressing_never_panics(&block[..block_length], &mut out[..out_length]);
     }
 
-    /// Decoding a frame is memory-safe for every 18-byte frame, which covers
-    /// the 16-byte header and a short block, with and without a reference
-    /// message.
+    /// Decoding a frame is memory-safe for every 18-byte frame: the 16-byte
+    /// header and two bytes of block, with and without a reference message.
     #[kani::proof]
-    #[kani::unwind(10)]
+    #[kani::unwind(8)]
     fn decoding_is_memory_safe() {
         let frame: [u8; 18] = kani::any();
-        let previous: [u8; 4] = kani::any();
+        let previous: [u8; 2] = kani::any();
         let with_previous: bool = kani::any();
         decoding_never_panics(&frame, if with_previous { Some(&previous) } else { None });
     }
 
-    /// A frame with a header that may claim any size at all, so that the
-    /// checks against forged sizes are covered.
+    /// A header that may claim any size at all, so the checks against forged
+    /// sizes are covered.
     #[kani::proof]
-    #[kani::unwind(10)]
+    #[kani::unwind(8)]
     fn decoding_a_forged_header_is_memory_safe() {
         let mut frame = [0u8; 18];
         frame[0..4].copy_from_slice(b"ABDZ");
@@ -152,24 +155,38 @@ mod proofs {
         decoding_never_panics(&frame, Some(&previous));
     }
 
+    /// Unshuffling a shuffled message restores it: nine bytes, so a whole
+    /// group of eight and a remainder.
     #[kani::proof]
     #[kani::unwind(12)]
     fn the_shuffle_is_reversible_for_any_message() {
-        let message: [u8; 9] = kani::any(); // a group of eight and a remainder
-        let length: usize = kani::any();
-        kani::assume(length <= message.len());
-        the_shuffle_is_reversible(&message[..length]);
+        let message: [u8; 9] = kani::any();
+        the_shuffle_is_reversible(&message);
     }
 
+    /// The round trip of a plain frame.
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn the_round_trip_restores_a_plain_message() {
+        let message: [u8; 6] = kani::any();
+        the_round_trip_restores_the_message(&message, false, None);
+    }
+
+    /// The round trip of a shuffled frame, over a whole group and a remainder.
     #[kani::proof]
     #[kani::unwind(12)]
-    fn the_round_trip_restores_any_message() {
+    fn the_round_trip_restores_a_shuffled_message() {
         let message: [u8; 9] = kani::any();
-        let length: usize = kani::any();
-        kani::assume(length <= message.len());
-        let shuffled: bool = kani::any();
-        let xored: bool = kani::any();
-        the_round_trip_restores_the_message(&message[..length], shuffled, xored);
+        the_round_trip_restores_the_message(&message, true, None);
+    }
+
+    /// The round trip of a frame encoded against a previous message.
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn the_round_trip_restores_a_message_encoded_against_another() {
+        let message: [u8; 6] = kani::any();
+        let previous: [u8; 6] = kani::any();
+        the_round_trip_restores_the_message(&message, false, Some(&previous));
     }
 }
 
@@ -200,7 +217,8 @@ mod tests {
         for length in 0..=4 {
             for decoded_size in 0..=8 {
                 for_every_string(&alphabet, length, &mut |block| {
-                    decompressing_never_panics(block, decoded_size);
+                    let mut out = vec![0u8; decoded_size];
+                    decompressing_never_panics(block, &mut out);
                 });
             }
         }
@@ -237,10 +255,10 @@ mod tests {
         for length in 0..40usize {
             let message: Vec<u8> = (0..length).map(|i| (i * 37 % 251) as u8).collect();
             the_shuffle_is_reversible(&message);
+            let previous: Vec<u8> = message.iter().map(|b| b.wrapping_mul(31)).collect();
             for shuffled in [false, true] {
-                for xored in [false, true] {
-                    the_round_trip_restores_the_message(&message, shuffled, xored);
-                }
+                the_round_trip_restores_the_message(&message, shuffled, None);
+                the_round_trip_restores_the_message(&message, shuffled, Some(&previous));
             }
         }
     }

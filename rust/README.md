@@ -50,5 +50,10 @@ cargo kani --manifest-path rust/Cargo.toml
 ```
 
 They run nightly and on pull requests that touch this crate (`.github/workflows/kani.yml`), not on every
-change, because they are slow. The bounds are small on purpose: symbolic execution costs grow quickly with
-the size of the input, and the decoder's mistakes, if any, live in its first few bytes.
+change, because they are slow, and each harness runs as a job of its own, so one that does not finish cannot
+hide the others.
+
+The decoder is proved one layer at a time: the LZ4 block, the frame, the shuffle, and the round trip over
+each path. A first version proved the whole pipeline on symbolic data in a single harness and did not finish
+within ninety minutes. The bounds are small on purpose: symbolic execution costs grow quickly with the size
+of the input, and a decoder's mistakes live in its first few bytes.

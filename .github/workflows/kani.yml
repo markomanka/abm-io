@@ -1,7 +1,8 @@
 # Proves the Rust decoder's properties with Kani (milestone R of docs/ROADMAP.md):
 # memory safety on any input within the declared bounds, and the round trip.
 # The proofs are slow, so they run nightly and on pull requests that touch the
-# crate, not on every change; "CI passed" does not depend on them.
+# crate, not on every change; "CI passed" does not depend on them. Each harness
+# is a job of its own, so one that does not finish cannot hide the others.
 name: Kani proofs
 
 on:
@@ -22,9 +23,20 @@ concurrency:
 
 jobs:
   proofs:
-    name: Kani proofs (milestone R)
+    name: ${{ matrix.harness }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        harness:
+          - decompressing_is_memory_safe
+          - decoding_is_memory_safe
+          - decoding_a_forged_header_is_memory_safe
+          - the_shuffle_is_reversible_for_any_message
+          - the_round_trip_restores_a_plain_message
+          - the_round_trip_restores_a_shuffled_message
+          - the_round_trip_restores_a_message_encoded_against_another
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -35,5 +47,7 @@ jobs:
           cargo install --locked kani-verifier --version 0.56.0
           cargo kani setup
 
-      - name: Prove
-        run: cargo kani --manifest-path rust/Cargo.toml --output-format terse
+      - name: Prove ${{ matrix.harness }}
+        run: |
+          cargo kani --manifest-path rust/Cargo.toml --harness ${{ matrix.harness }} \
+            --output-format terse
