@@ -8,3 +8,4 @@ leak-*
 timeout-*
 oom-*
 __pycache__/
+rust/target/

@@ -17,6 +17,7 @@ option(ABMIO_ENABLE_MPI "Build the multi-rank MPI test" OFF)
 option(ABMIO_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(ABMIO_COVERAGE "Instrument for coverage" OFF)
 option(ABMIO_BUILD_GENERATOR_TESTS "Test abm-gen (needs Python 3 with the libclang and PyYAML packages)" OFF)
+option(ABMIO_RUST_CODEC "Build the Rust decoder and compare it with the C++ one (needs cargo); see rust/README.md" OFF)
 set(ABMIO_SANITIZE "" CACHE STRING "Sanitizers, e.g. address,undefined or thread")
 
 # --- LZ4: pkg-config first, plain search as fallback
@@ -71,6 +72,31 @@ if(ABMIO_BUILD_TESTS)
   target_include_directories(abmio_tests PRIVATE tests)
   target_link_libraries(abmio_tests PRIVATE abmio GTest::gtest_main abmio_flags)
   gtest_discover_tests(abmio_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS unit)
+  if(ABMIO_RUST_CODEC)
+    # The Rust decoder of milestone R: built by cargo, linked as a static
+    # library, and compared with the C++ decoder on the same inputs.
+    find_program(ABMIO_CARGO cargo REQUIRED)
+    set(ABMIO_RUST_DIR ${CMAKE_CURRENT_SOURCE_DIR}/rust)
+    set(ABMIO_RUST_LIB ${CMAKE_CURRENT_BINARY_DIR}/rust/release/libabmio_codec.a)
+    add_custom_command(
+      OUTPUT ${ABMIO_RUST_LIB}
+      COMMAND ${ABMIO_CARGO} build --release --locked --manifest-path ${ABMIO_RUST_DIR}/Cargo.toml
+              --target-dir ${CMAKE_CURRENT_BINARY_DIR}/rust
+      DEPENDS ${ABMIO_RUST_DIR}/src/lib.rs ${ABMIO_RUST_DIR}/src/lz4.rs
+              ${ABMIO_RUST_DIR}/src/ffi.rs ${ABMIO_RUST_DIR}/Cargo.toml ${ABMIO_RUST_DIR}/Cargo.lock
+      COMMENT "cargo: building the Rust decoder"
+      VERBATIM)
+    add_custom_target(abmio_rust_codec DEPENDS ${ABMIO_RUST_LIB})
+    add_executable(abmio_rust_tests tests/rust/rust_codec_test.cc)
+    add_dependencies(abmio_rust_tests abmio_rust_codec)
+    target_include_directories(abmio_rust_tests PRIVATE ${ABMIO_RUST_DIR}/include)
+    target_compile_definitions(abmio_rust_tests PRIVATE
+                               ABMIO_CORPUS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fuzz/corpus")
+    target_link_libraries(abmio_rust_tests PRIVATE abmio ${ABMIO_RUST_LIB} GTest::gtest_main
+                                                   abmio_flags ${CMAKE_DL_LIBS})
+    gtest_discover_tests(abmio_rust_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS rust)
+  endif()
+
   if(ABMIO_BUILD_GENERATOR_TESTS)
     # abm-gen on the miniature BioDynaMo in tests/generator: the Python tests,
     # and a C++ test compiled against the generated header.

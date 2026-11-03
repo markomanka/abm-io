@@ -151,10 +151,36 @@ jobs:
       - name: Test the generator
         run: ctest --test-dir build --output-on-failure -L generator
 
+  rust:
+    name: Rust decoder (milestone R)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build pkg-config liblz4-dev libgtest-dev
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install 1.84.0 --profile minimal --component rustfmt,clippy
+          rustup default 1.84.0
+          rustc --version && cargo --version
+      - name: Formatting and lints
+        run: |
+          cargo fmt --manifest-path rust/Cargo.toml --check
+          cargo clippy --manifest-path rust/Cargo.toml --locked --all-targets -- -D warnings
+      - name: The crate's own tests
+        run: cargo test --manifest-path rust/Cargo.toml --locked
+      - name: Against the C++ decoder
+        run: |
+          cmake -S . -B build -G Ninja -DABMIO_WARNINGS_AS_ERRORS=ON -DABMIO_BUILD_BENCHMARKS=OFF -DABMIO_RUST_CODEC=ON
+          cmake --build build
+          ctest --test-dir build --output-on-failure -L rust
+
   ci-ok:
     name: CI passed
     if: always()
-    needs: [policy, build-test, sanitizers, mpi, coverage, generator]
+    needs: [policy, build-test, sanitizers, mpi, coverage, generator, rust]
     runs-on: ubuntu-24.04
     steps:
       - name: All required jobs succeeded
