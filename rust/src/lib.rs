@@ -15,6 +15,7 @@
 
 pub mod ffi;
 pub mod lz4;
+pub mod properties;
 
 /// Mirrors `abmio::Status` (include/abmio/status.h); the values must match.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -66,8 +67,21 @@ fn parse_header(frame: &[u8]) -> Result<Header, Status> {
     })
 }
 
+/// The 8-byte shuffle of `src/codec.cc`: the first byte of every group of
+/// eight, then every second byte, and so on, with the remainder unchanged.
+pub fn shuffle(input: &[u8], out: &mut [u8]) {
+    let n = out.len();
+    let groups = n / 8;
+    for i in 0..groups {
+        for b in 0..8 {
+            out[b * groups + i] = input[i * 8 + b];
+        }
+    }
+    out[8 * groups..n].copy_from_slice(&input[8 * groups..n]);
+}
+
 /// Reverses the 8-byte shuffle of `src/codec.cc` in place over a copy.
-fn unshuffle(input: &[u8], out: &mut [u8]) {
+pub fn unshuffle(input: &[u8], out: &mut [u8]) {
     let n = out.len();
     let groups = n / 8;
     for i in 0..groups {

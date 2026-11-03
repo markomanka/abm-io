@@ -24,6 +24,12 @@ toolchain.
 
 The crate has **no third-party dependencies**: `Cargo.lock` holds the crate itself and nothing else.
 
+- `src/properties.rs`: the properties the decoder must have, written as plain functions that panic if they do
+  not hold: decoding never panics whatever the bytes, a rejected frame leaves no output, unshuffling a
+  shuffled message restores it, and a frame built from a message decodes back to exactly that message. Kani
+  proves them for every input within the bounds the harnesses declare; the same functions also run over
+  enumerated inputs in the crate's tests, so they are exercised wherever Kani is not installed.
+
 ## Building and testing it
 
 ```bash
@@ -35,3 +41,14 @@ ctest --test-dir build -L rust  # the two decoders compared on the same inputs
 
 The comparison feeds both decoders frames from the encoder, over several shapes of data, and random and
 corrupted bytes, and requires the same status and the same output from each.
+
+The proofs need Kani, which brings its own model checker:
+
+```bash
+cargo install --locked kani-verifier && cargo kani setup
+cargo kani --manifest-path rust/Cargo.toml
+```
+
+They run nightly and on pull requests that touch this crate (`.github/workflows/kani.yml`), not on every
+change, because they are slow. The bounds are small on purpose: symbolic execution costs grow quickly with
+the size of the input, and the decoder's mistakes, if any, live in its first few bytes.

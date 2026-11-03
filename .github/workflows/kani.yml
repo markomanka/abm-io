@@ -1,0 +1,39 @@
+# Proves the Rust decoder's properties with Kani (milestone R of docs/ROADMAP.md):
+# memory safety on any input within the declared bounds, and the round trip.
+# The proofs are slow, so they run nightly and on pull requests that touch the
+# crate, not on every change; "CI passed" does not depend on them.
+name: Kani proofs
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  pull_request:
+    paths:
+      - 'rust/**'
+      - '.github/workflows/kani.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  proofs:
+    name: Kani proofs (milestone R)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Kani
+        run: |
+          cargo install --locked kani-verifier --version 0.56.0
+          cargo kani setup
+
+      - name: Prove
+        run: cargo kani --manifest-path rust/Cargo.toml --output-format terse
