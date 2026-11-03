@@ -57,11 +57,25 @@ The decoder is proved one layer at a time: the LZ4 block, the frame, the shuffle
 each path. The bounds are small on purpose: symbolic execution costs grow quickly with the size of the
 input, and a decoder's mistakes live in its first few bytes.
 
-Finding bounds the solver can carry took two attempts, which is itself part of what the experiment set out
-to learn. A first version proved the whole pipeline in one harness and did not finish within ninety minutes.
-A second proved each layer separately: the shuffle and all three round trips were proved, while the three
-memory-safety harnesses did not finish, because fully symbolic bytes drive every branch of the LZ4 loop and
-one step allocates a buffer whose size is itself symbolic. The harnesses here bound that allocation: one
-proves that a header claiming more than its payload could produce is rejected before anything is allocated,
-and another proves the decoding path for claims of up to eight bytes. Claims between nine bytes and the
-compression bound are covered by fuzzing, not by proof.
+### What is proved, and what is not
+
+Six harnesses pass: the LZ4 block decoder is memory-safe for every one of the 2^32 four-byte blocks against
+a four-byte output; decoding is memory-safe for every 18-byte frame whose header claims at most eight bytes;
+unshuffling a shuffled message restores it; and a frame built from a message decodes back to exactly that
+message, plain, shuffled, and encoded against another message.
+
+Two things are **not** proved, and rest on the crate's tests, the comparison with the C++ decoder and
+fuzzing:
+
+- frames whose header claims between nine bytes and the compression bound, since the decoder allocates a
+  buffer of the claimed size and a symbolic allocation is what a solver struggles with;
+- that a header claiming more than its payload could produce is always rejected. A harness over a symbolic
+  64-bit size failed at a small unwind bound and did not finish at a larger one, so the property is asserted
+  over a list of forged sizes in the tests instead.
+
+Finding bounds a solver can carry took four attempts, which is itself part of what the experiment set out to
+measure. A first version proved the whole pipeline in one harness and did not finish within ninety minutes.
+Proving each layer separately settled the shuffle and the round trips at once. The memory-safety harnesses
+needed their allocations bounded before they would finish, and the forged-size harness was abandoned. The
+pattern is consistent: proofs are affordable where the control flow is determined, and expensive where
+symbolic bytes decide both the branching and the size of an allocation.

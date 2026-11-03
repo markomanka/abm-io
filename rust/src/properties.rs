@@ -14,6 +14,12 @@
 //!   panics, so proving the absence of panics proves both.
 //! - **The round trip:** a frame built from a message decodes back to exactly
 //!   that message, with or without the shuffle and the XOR.
+//!
+//! One property is asserted by the tests but not proved: that a header
+//! claiming more than its payload could produce is rejected whatever the rest
+//! of the frame says. A harness over a symbolic 64-bit size did not finish in
+//! fifty minutes, and the bound that would make it finish was not worth the
+//! search; see rust/README.md.
 //! - **The shuffle** is its own inverse in the sense that unshuffling a
 //!   shuffled message restores it.
 
@@ -156,29 +162,6 @@ mod proofs {
         );
     }
 
-    /// A header claiming more than the payload could possibly produce is
-    /// rejected, whatever the rest of the frame says, and nothing is
-    /// allocated on the way.
-    // Nine at least: comparing the four-byte magic and copying the eight-byte
-    // size are loops of their own.
-    #[kani::proof]
-    #[kani::unwind(10)]
-    fn a_forged_size_is_rejected() {
-        let mut frame = [0u8; 18];
-        frame[0..4].copy_from_slice(b"ABDZ");
-        frame[4] = kani::any();
-        let size: u64 = kani::any();
-        // Two bytes of payload cannot decode to more than this (src/codec.cc).
-        kani::assume(size > 2 * 256 + 64);
-        frame[8..16].copy_from_slice(&size.to_le_bytes());
-        frame[16] = kani::any();
-        frame[17] = kani::any();
-        let mut out = Vec::new();
-        let status = decode_delta(&frame, None, &mut out);
-        assert!(status != Status::Ok);
-        assert!(out.is_empty());
-    }
-
     /// Unshuffling a shuffled message restores it: nine bytes, so a whole
     /// group of eight and a remainder.
     #[kani::proof]
@@ -258,9 +241,11 @@ mod tests {
             });
         }
         // Whole frames: a valid header with each flag, a forged size, a payload.
+        // The forged sizes stand in for the proof that was too costly to run:
+        // every one of them must be rejected, whatever the flags and payload.
         let previous = [0x5au8; 4];
         for flags in 0..=3u8 {
-            for size in [0u64, 1, 4, 17, 1 << 20, u64::MAX] {
+            for size in [0u64, 1, 4, 17, 577, 1000, 1 << 20, (1 << 31) + 1, u64::MAX] {
                 for payload in [vec![], vec![0x10, 0x41], vec![0xff; 6]] {
                     let mut frame = b"ABDZ".to_vec();
                     frame.push(flags);

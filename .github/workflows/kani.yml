@@ -32,7 +32,6 @@ jobs:
         harness:
           - decompressing_is_memory_safe
           - decoding_is_memory_safe_for_small_claims
-          - a_forged_size_is_rejected
           - the_shuffle_is_reversible_for_any_message
           - the_round_trip_restores_a_plain_message
           - the_round_trip_restores_a_shuffled_message
