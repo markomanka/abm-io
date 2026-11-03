@@ -114,45 +114,67 @@ mod proofs {
     // a solver can carry, and each harness runs as a job of its own, so a slow
     // one cannot hide the others.
 
-    /// Decompression is memory-safe for every block of up to five bytes
-    /// against every output of up to five bytes.
+    /// Decompression is memory-safe for every four-byte block against a
+    /// four-byte output: every one of the 2^32 blocks, whatever the tokens,
+    /// lengths and offsets in them say.
     #[kani::proof]
-    #[kani::unwind(8)]
+    #[kani::unwind(5)]
     fn decompressing_is_memory_safe() {
-        let block: [u8; 5] = kani::any();
-        let block_length: usize = kani::any();
-        kani::assume(block_length <= block.len());
-        let mut out = [0u8; 5];
-        let out_length: usize = kani::any();
-        kani::assume(out_length <= out.len());
-        decompressing_never_panics(&block[..block_length], &mut out[..out_length]);
+        let block: [u8; 4] = kani::any();
+        let mut out = [0u8; 4];
+        decompressing_never_panics(&block, &mut out);
     }
 
-    /// Decoding a frame is memory-safe for every 18-byte frame: the 16-byte
-    /// header and two bytes of block, with and without a reference message.
+    /// Decoding is memory-safe for every 18-byte frame whose header claims a
+    /// size of at most eight bytes: the path that reaches the decoder.
+    ///
+    /// The claimed size is bounded because the decoder allocates a buffer of
+    /// that size, and a symbolic allocation is what a solver struggles with.
+    /// Larger claims are covered by the harness below, which proves they are
+    /// rejected before anything is allocated; between the two, claims from
+    /// nine bytes to the compression bound rest on fuzzing.
     #[kani::proof]
-    #[kani::unwind(8)]
-    fn decoding_is_memory_safe() {
-        let frame: [u8; 18] = kani::any();
-        let previous: [u8; 2] = kani::any();
+    #[kani::unwind(6)]
+    fn decoding_is_memory_safe_for_small_claims() {
+        let mut frame = [0u8; 18];
+        let head: [u8; 8] = kani::any();
+        frame[0..8].copy_from_slice(&head);
+        let size: u64 = kani::any();
+        kani::assume(size <= 8);
+        frame[8..16].copy_from_slice(&size.to_le_bytes());
+        frame[16] = kani::any();
+        frame[17] = kani::any();
+        let previous: [u8; 8] = kani::any();
         let with_previous: bool = kani::any();
-        decoding_never_panics(&frame, if with_previous { Some(&previous) } else { None });
+        decoding_never_panics(
+            &frame,
+            if with_previous {
+                Some(&previous[..size as usize])
+            } else {
+                None
+            },
+        );
     }
 
-    /// A header that may claim any size at all, so the checks against forged
-    /// sizes are covered.
+    /// A header claiming more than the payload could possibly produce is
+    /// rejected, whatever the rest of the frame says, and nothing is
+    /// allocated on the way.
     #[kani::proof]
-    #[kani::unwind(8)]
-    fn decoding_a_forged_header_is_memory_safe() {
+    #[kani::unwind(4)]
+    fn a_forged_size_is_rejected() {
         let mut frame = [0u8; 18];
         frame[0..4].copy_from_slice(b"ABDZ");
         frame[4] = kani::any();
         let size: u64 = kani::any();
+        // Two bytes of payload cannot decode to more than this (src/codec.cc).
+        kani::assume(size > 2 * 256 + 64);
         frame[8..16].copy_from_slice(&size.to_le_bytes());
         frame[16] = kani::any();
         frame[17] = kani::any();
-        let previous: [u8; 2] = kani::any();
-        decoding_never_panics(&frame, Some(&previous));
+        let mut out = Vec::new();
+        let status = decode_delta(&frame, None, &mut out);
+        assert!(status != Status::Ok);
+        assert!(out.is_empty());
     }
 
     /// Unshuffling a shuffled message restores it: nine bytes, so a whole

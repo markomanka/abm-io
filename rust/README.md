@@ -54,6 +54,14 @@ change, because they are slow, and each harness runs as a job of its own, so one
 hide the others.
 
 The decoder is proved one layer at a time: the LZ4 block, the frame, the shuffle, and the round trip over
-each path. A first version proved the whole pipeline on symbolic data in a single harness and did not finish
-within ninety minutes. The bounds are small on purpose: symbolic execution costs grow quickly with the size
-of the input, and a decoder's mistakes live in its first few bytes.
+each path. The bounds are small on purpose: symbolic execution costs grow quickly with the size of the
+input, and a decoder's mistakes live in its first few bytes.
+
+Finding bounds the solver can carry took two attempts, which is itself part of what the experiment set out
+to learn. A first version proved the whole pipeline in one harness and did not finish within ninety minutes.
+A second proved each layer separately: the shuffle and all three round trips were proved, while the three
+memory-safety harnesses did not finish, because fully symbolic bytes drive every branch of the LZ4 loop and
+one step allocates a buffer whose size is itself symbolic. The harnesses here bound that allocation: one
+proves that a header claiming more than its payload could produce is rejected before anything is allocated,
+and another proves the decoding path for claims of up to eight bytes. Claims between nine bytes and the
+compression bound are covered by fuzzing, not by proof.
