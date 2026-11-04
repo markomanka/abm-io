@@ -123,6 +123,12 @@ name**: a field missing from the file takes its default value, a field unknown t
 field whose type changed needs a converter registered for that schema version. Old files therefore stay
 readable after a model changes.
 
+**Resuming a simulation is strict.** That permissive rule is right for reading an old file for analysis and
+wrong for restarting from it: a parameter added since the checkpoint was written would silently take a
+default, and the simulation would continue with a value nobody chose. So a checkpoint whose schema differs
+from the running model in anything carrying a *checkpoint* role fails to load, naming what differs, unless
+the caller explicitly accepts the defaults. Reading the same file for analysis stays permissive.
+
 ## Checkpoint files
 
 Checkpoints are HDF5 files, readable by any HDF5 tool, including `h5py`, without abm-io.
@@ -143,6 +149,13 @@ Checkpoints are HDF5 files, readable by any HDF5 tool, including `h5py`, without
 - **Parallel runs:** each process writes its own agents. One file per process plus an index file is always
   available; with parallel HDF5, the processes may instead write one shared file collectively. The reader
   accepts both.
+- **At large process counts, writers are grouped.** One file per process is the form that must always work,
+  not the form to use at any scale: on a parallel file system, tens of thousands of files per checkpoint
+  become a metadata bottleneck, and closing them can cost more than the step that produced them. Writers are
+  then grouped, one file per node or per some hundreds of ranks, which is the same arrangement HDF5 subfiling
+  and ADIOS2 provide. Cloud object storage pulls the other way, favouring many independent objects, which is
+  another reason the per-process form is the one that must always work. Where the crossover lies is a
+  measurement nobody has made here yet.
 
 ## Exchange between processes
 
@@ -154,6 +167,11 @@ they are needed as read-only copies near a border. abm-io then:
 3. optionally compresses, which pays off on slow links;
 4. unpacks on the receiving side into memory that the receiver owns and reuses, so the steady state allocates
    nothing per agent.
+
+Only fixed-size fields travel that way, as elements in rows or columns. **Variable-length data takes another
+path**: vectors, strings, nested records and the lists of behaviours are written after them, with their
+counts and offsets in the message, because a reusable arena suits fixed-size data and nothing else. The two
+are separate by design, not crammed together.
 
 Decoders validate every frame, and fuzzing covers them. The library produces and consumes byte buffers; an
 optional module sends them over MPI on a communicator supplied by the simulator, so abm-io never assumes
