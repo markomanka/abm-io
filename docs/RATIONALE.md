@@ -152,6 +152,30 @@ compact event stream for discrete events.
 where the events are sparse, and worse where they are dense; which is which is a measurement, not an
 argument. Recorded so the choice is made on numbers.
 
+## 8. Checkpoints compress with LZ4, not gzip
+
+**Decided.** Field datasets are chunked and compressed with LZ4 through the registered HDF5 filter, not with
+HDF5's built-in gzip.
+
+**What it costs.** The contract used to promise files "readable by any HDF5 tool, including `h5py`, without
+abm-io". That promise is now narrower: a reader needs the standard filter plugins, which `pip` and
+conda-forge both package, rather than needing nothing at all.
+
+**Why.** At the sizes these files reach, storage is not the constraint; the time spent moving and
+transforming bytes is. LZ4 compresses and decompresses several times faster than gzip and compresses less,
+which is the right trade when a checkpoint is written every simulated hour and read on every restart. A
+writer can still be asked for gzip where a file must reach a reader that cannot install a plugin.
+
+**What it does not cost.** abm-io needs no plugin itself: it compresses with the LZ4 it already links and
+hands HDF5 the finished chunk through the direct chunk write, and reads its own files by taking the raw
+chunk back. The dependency falls on third-party readers, not on this library or its build.
+
+**What would change our mind.** Evidence that the plugin is a real obstacle for the people who read these
+files, or a measurement showing the compression step is not on the critical path after all, in which case
+the stronger promise would be worth more than the speed.
+
+---
+
 ---
 
 ## What this episode taught about the documents
