@@ -60,6 +60,12 @@ brew install cmake ninja lz4 googletest pkgconf                            # mac
 
 `CONTRIBUTING.md` covers sanitizer, fuzzing and MPI builds.
 
+## Why the design is as it is
+
+[docs/RATIONALE.md](docs/RATIONALE.md) records the decisions that have been questioned: what was chosen,
+what was rejected, why, and what would change our mind. Criticism is welcome from anyone, with or without
+a patch; specificity is the only thing asked in return.
+
 ## Contributing and security
 
 Contributions are welcome; see `CONTRIBUTING.md`. Report vulnerabilities privately, as described in
