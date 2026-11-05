@@ -72,6 +72,33 @@ big-endian 32-bit compressed size followed by its bytes.
 The direct chunk write (`H5Dwrite_chunk`) was tried first and works, but it does not avoid registering the
 filter, so it was dropped in favour of HDF5's ordinary paths.
 
+## Where the compression crossover lies
+
+The arithmetic behind the compression policy, from one measured number and two that are not yet measured
+here and must be before the defaults are trusted:
+
+| Quantity | Value | Source |
+| --- | --- | --- |
+| Gather bound, reading the fields of an agent | 27–55 ns | measured, see above |
+| Checkpointed state per agent | about 120 bytes | fifteen fields of a cell-like agent |
+| LZ4 compression rate, one core | about 500 MB/s | typical, to measure on the target machine |
+| LZ4 decompression rate, one core | several GB/s | typical, to measure |
+
+For a million agents: the gather costs about 55 ms, compressing the resulting 120 MB about 240 ms, and
+writing the compressed 15 MB almost nothing. Uncompressed, the same checkpoint costs the gather plus
+writing 120 MB. Compression therefore pays when the storage is slower than roughly a gigabyte per second,
+and costs about a factor of two on faster storage. Restoring is the easier direction, since LZ4
+decompresses several times faster than it compresses, and is bound by scattering values back into agents.
+
+**What writing the properties found, before any container existed.** Two faults, neither of which a test of
+the decision's output would have caught:
+
+- the comparison in the rule was inverted, so the policy would have compressed exactly when it should not.
+  A test comparing the integer rule against the timing it was derived from caught it;
+- an unknown compression ratio leaned towards not compressing while every other unknown leaned towards
+  compressing. Since zero sits at the bottom of an ordered field, the monotonicity property rejected it
+  immediately. All unknowns now lean the same way.
+
 ## References
 
 1. Ntiniakou T, Osborne J, Zhao J, et al. *Open Benchmarking for Cell-Based Multiscale Models: Lessons from a

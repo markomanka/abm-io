@@ -183,6 +183,43 @@ the stronger promise would be worth more than the speed.
 
 ---
 
+## 9. Whether to compress is decided, not switched
+
+**Decided.** The checkpoint writer takes `off`, `on` or `auto`. `auto` decides from declared inputs: the
+storage bandwidth a site configures or a short calibration measures once at start-up, the compressor's
+measured rate, and the ratio seen on the first chunks. The decision and its inputs are written into the
+file.
+
+**Why there is a decision at all.** Compressing is not free. Our measured gather bound is 27 to 55 ns per
+agent, so a million agents of roughly 120 bytes each are read in about 55 ms, an effective 2 GB/s. LZ4
+compresses that 120 MB at perhaps 500 MB/s on one core, four times longer than the gather, and the
+compressed 15 MB then costs almost nothing to write. On storage faster than the compressor, compressing
+therefore makes checkpointing slower, by roughly a factor of two on local NVMe; on a shared file system
+giving a node a few hundred megabytes per second, it makes it faster. The crossover sits near a gigabyte
+per second at our ratios, which is exactly the range separating a laptop from a cluster. Neither answer is
+right everywhere, so neither is a good default to hard-code.
+
+**Alternatives rejected.**
+
+- *A manual switch alone.* It asks the user to know their file system's bandwidth and the compressor's
+  rate, which few do, and to revisit it whenever either changes. The switch remains, as `off` and `on`,
+  for those who do know.
+- *Deciding from live timings.* Tempting, and wrong: two runs of the same simulation on the same machine
+  would write different files depending on load, which is a poor property to debug or audit against.
+  Declared inputs keep the decision reproducible, and recording them keeps it explicable.
+
+**What it must never do, and this is proved rather than intended.** The decision cannot change the data:
+two checkpoints of the same simulation written with different decisions restore identically. That is what
+makes the policy safe to retune later, by us or by a site, without anyone re-examining whether the science
+still holds.
+
+**What would change our mind.** A measurement placing the crossover somewhere else, which would move the
+rule rather than remove it. Or evidence that HDF5's filter pipeline, which compresses on one thread per
+process, is the real ceiling: then the answer is not a better policy but compressing chunks on several
+threads and handing them over with the direct chunk write, which was prototyped and works.
+
+---
+
 ---
 
 ## What this episode taught about the documents
