@@ -166,9 +166,16 @@ transforming bytes is. LZ4 compresses and decompresses several times faster than
 which is the right trade when a checkpoint is written every simulated hour and read on every restart. A
 writer can still be asked for gzip where a file must reach a reader that cannot install a plugin.
 
-**What it does not cost.** abm-io needs no plugin itself: it compresses with the LZ4 it already links and
-hands HDF5 the finished chunk through the direct chunk write, and reads its own files by taking the raw
-chunk back. The dependency falls on third-party readers, not on this library or its build.
+**What it does not cost.** abm-io needs no plugin itself: it registers the filter with `H5Zregister`,
+implemented with the LZ4 it already links, so its own reads and writes go through HDF5's ordinary paths.
+Tested before the design was fixed: a file written that way is read correctly by `h5py` with
+`hdf5plugin`, so the bytes are the registered filter's, not ours (see `docs/FINDINGS.md`). The dependency
+falls on third-party readers, not on this library or its build.
+
+An earlier version of this entry said abm-io would hand HDF5 pre-compressed chunks through the direct
+chunk write. That works, but it requires the filter to be registered anyway for the dataset to be created
+with a mandatory filter, so registering it and using the ordinary paths is simpler and was adopted
+instead.
 
 **What would change our mind.** Evidence that the plugin is a real obstacle for the people who read these
 files, or a measurement showing the compression step is not on the critical path after all, in which case

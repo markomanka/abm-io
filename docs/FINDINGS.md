@@ -51,6 +51,27 @@ and macOS (October 2026): HDF5 2.2.0, HighFive 3.3.0, nlohmann_json 3.12.0, LZ4,
 for viewing VTKHDF files. Spack packages the same libraries for HPC clusters, and also Catalyst 2
 (`libcatalyst`) for in-situ visualization.
 
+## Checkpoint compression, before the container was written
+
+Tested with HDF5 1.10.10 and liblz4 1.9.4 on Linux, to settle how checkpoints would be compressed before any
+container code existed:
+
+| Question | Answer |
+| --- | --- |
+| Can a dataset declare the registered LZ4 filter (32004) without it being installed? | No. With a mandatory filter, dataset creation fails: "required filter 32004 is not registered" |
+| Can abm-io provide the filter itself? | Yes, with `H5Zregister` and the LZ4 it already links; `H5Zfilter_avail` then reports it available |
+| Does a round trip through HDF5 preserve the data? | Yes, byte for byte, 8192 doubles |
+| How well does it compress? | 65,536 bytes of data to a 7,113-byte file, with 1,024-element chunks |
+| Can a third party read it? | Yes: `h5py` with `hdf5plugin` returns identical values and reports the filter as 32004 |
+
+So the compression decision costs abm-io no new dependency and keeps the files readable by the usual Python
+tools. The filter's format, which had to be matched exactly for that last row to hold, is the total decoded
+size as a big-endian 64-bit integer, the block size as a big-endian 32-bit integer, then each block as its
+big-endian 32-bit compressed size followed by its bytes.
+
+The direct chunk write (`H5Dwrite_chunk`) was tried first and works, but it does not avoid registering the
+filter, so it was dropped in favour of HDF5's ordinary paths.
+
 ## References
 
 1. Ntiniakou T, Osborne J, Zhao J, et al. *Open Benchmarking for Cell-Based Multiscale Models: Lessons from a

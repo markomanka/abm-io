@@ -151,10 +151,12 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
   times faster than gzip while compressing less. The price is the promise above: a reader needs the standard
   LZ4 filter plugin, which is a package away, rather than nothing at all. A writer may be asked for gzip
   instead where a file must be readable by a reader that cannot install one.
-- **abm-io itself needs no plugin.** It compresses with the LZ4 it already links and hands HDF5 the finished
-  chunk through the direct chunk write, declaring the filter in the dataset so that other readers apply it;
-  reading its own files, it takes the raw chunk back and decompresses it the same way. The plugin is a
-  requirement on third-party readers, not on this library or its build.
+- **abm-io provides the filter itself**, with `H5Zregister`, implemented with the LZ4 it already links, so
+  it reads and writes these files through HDF5's ordinary paths and needs no plugin of its own. The format
+  is the registered filter's, so a reader with the plugin decodes the same bytes: the total decoded size as
+  a big-endian 64-bit integer, the block size as a big-endian 32-bit integer, then each block as its
+  big-endian 32-bit compressed size followed by its bytes. The plugin is a requirement on third-party
+  readers, not on this library or its build.
 - **Restart guarantee:** restoring a checkpoint reproduces every field with the *checkpoint* role exactly, and
   a simulation continued from a checkpoint matches the uninterrupted run, given the same random streams.
 - **Parallel runs:** each process writes its own agents. One file per process plus an index file is always
