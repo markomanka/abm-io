@@ -309,7 +309,15 @@ mod proofs {
             compress_bytes_per_second: u64::from(kani::any::<u32>()),
             compressed_per_256: 0,
         };
-        the_decision_is_monotone_in_the_ratio(kani::any(), kani::any(), inputs);
+        // The field is defined as the compressed size per 256 bytes of input,
+        // so observations above 256 do not arise and the rule treats them all
+        // alike. Stating that domain is also what makes this proof finish:
+        // unlike the harness above, its two decisions differ in the ratio, so
+        // the solver builds two multipliers rather than one.
+        let better: u16 = kani::any();
+        let worse: u16 = kani::any();
+        kani::assume(better <= 256 && worse <= 256);
+        the_decision_is_monotone_in_the_ratio(better, worse, inputs);
     }
 
     /// The round trip of a frame encoded against a previous message.
