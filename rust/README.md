@@ -59,16 +59,18 @@ input, and a decoder's mistakes live in its first few bytes.
 
 ### What is proved, and what is not
 
-Nine harnesses pass. Three concern the compression policy of
-[docs/INTEGRATION.md](../docs/INTEGRATION.md): deciding is total and obeys an explicit request, and the
-decision is monotone in the storage bandwidth and in the compression ratio, so the policy cannot be tuned
-Nine harnesses pass. Three concern the compression policy of
-[docs/INTEGRATION.md](../docs/INTEGRATION.md): deciding is total and obeys an explicit request, and the
-decision is monotone in the storage bandwidth and in the compression ratio, so the policy cannot be tuned
-into nonsense without a proof failing. The other six:
-a four-byte output; decoding is memory-safe for every 18-byte frame whose header claims at most eight bytes;
-unshuffling a shuffled message restores it; and a frame built from a message decodes back to exactly that
-message, plain, shuffled, and encoded against another message.
+Nine harnesses pass, the rates in the policy proofs taken over 32 bits, which covers every rate these
+files will meet: the rule multiplies two of its inputs, and a solver builds a multiplier as wide as the
+words it is given, so 64 symbolic bits on both sides does not finish in fifty minutes.
+
+Three concern the compression policy of [docs/INTEGRATION.md](../docs/INTEGRATION.md): deciding is total
+and obeys an explicit request, and the decision is monotone in the storage bandwidth and in the
+compression ratio, so the policy cannot be tuned into nonsense without a proof failing.
+
+The other six: the LZ4 block decoder is memory-safe for every one of the 2^32 four-byte blocks against a
+four-byte output; decoding is memory-safe for every 18-byte frame whose header claims at most eight
+bytes; unshuffling a shuffled message restores it; and a frame built from a message decodes back to
+exactly that message, plain, shuffled, and encoded against another message.
 
 Two things are **not** proved, and rest on the crate's tests, the comparison with the C++ decoder and
 fuzzing:

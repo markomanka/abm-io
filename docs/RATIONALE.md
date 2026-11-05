@@ -213,6 +213,13 @@ two checkpoints of the same simulation written with different decisions restore 
 makes the policy safe to retune later, by us or by a site, without anyone re-examining whether the science
 still holds.
 
+**What the proofs cover, and what they do not.** The rates are proved over 32 bits, which is every rate
+these files will meet, 4 GB/s and below. The reason is instructive: the rule multiplies two of its inputs,
+and a bit-blasting solver builds a multiplier as wide as the words it is given, so 64 symbolic bits on both
+sides does not finish in fifty minutes while 32 does. Nonlinear arithmetic over wide words is a different
+wall from the path explosion that bounded the decoder proofs, and worth knowing before designing the next
+thing to be proved.
+
 **What would change our mind.** A measurement placing the crossover somewhere else, which would move the
 rule rather than remove it. Or evidence that HDF5's filter pipeline, which compresses on one thread per
 process, is the real ceiling: then the answer is not a better policy but compressing chunks on several

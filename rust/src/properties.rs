@@ -271,12 +271,18 @@ mod proofs {
             _ => Request::Auto,
         };
         let inputs = Inputs {
-            storage_bytes_per_second: kani::any(),
-            compress_bytes_per_second: kani::any(),
+            storage_bytes_per_second: u64::from(kani::any::<u32>()),
+            compress_bytes_per_second: u64::from(kani::any::<u32>()),
             compressed_per_256: kani::any(),
         };
         deciding_never_panics_and_obeys_the_request(request, inputs);
     }
+
+    // The rates are proved over 32 bits, which is every rate these files will
+    // meet: 4 GB/s and below. The rule multiplies two of its inputs, and a
+    // solver builds a multiplier circuit as wide as the words it is given, so
+    // 64 symbolic bits on both sides does not finish in fifty minutes while 32
+    // does.
 
     /// Faster storage never makes the policy choose to compress.
     #[kani::proof]
@@ -284,10 +290,14 @@ mod proofs {
     fn deciding_is_monotone_in_bandwidth() {
         let inputs = Inputs {
             storage_bytes_per_second: 0,
-            compress_bytes_per_second: kani::any(),
+            compress_bytes_per_second: u64::from(kani::any::<u32>()),
             compressed_per_256: kani::any(),
         };
-        the_decision_is_monotone_in_bandwidth(kani::any(), kani::any(), inputs);
+        the_decision_is_monotone_in_bandwidth(
+            u64::from(kani::any::<u32>()),
+            u64::from(kani::any::<u32>()),
+            inputs,
+        );
     }
 
     /// Data that compresses less never makes the policy more willing.
@@ -295,8 +305,8 @@ mod proofs {
     #[kani::unwind(4)]
     fn deciding_is_monotone_in_the_ratio() {
         let inputs = Inputs {
-            storage_bytes_per_second: kani::any(),
-            compress_bytes_per_second: kani::any(),
+            storage_bytes_per_second: u64::from(kani::any::<u32>()),
+            compress_bytes_per_second: u64::from(kani::any::<u32>()),
             compressed_per_256: 0,
         };
         the_decision_is_monotone_in_the_ratio(kani::any(), kani::any(), inputs);
