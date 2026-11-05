@@ -15,6 +15,7 @@
 
 pub mod ffi;
 pub mod lz4;
+pub mod policy;
 pub mod properties;
 
 /// Mirrors `abmio::Status` (include/abmio/status.h); the values must match.

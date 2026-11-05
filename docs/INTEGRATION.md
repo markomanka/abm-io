@@ -145,12 +145,24 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 /host/<simulator>      anything else the simulator needs to resume, in its own layout
 ```
 
-- **Compression: LZ4, by the registered HDF5 filter.** Field datasets are chunked and compressed with LZ4
-  rather than with HDF5's built-in gzip. At the sizes these files reach, the cost that matters is the time
-  spent moving and transforming bytes, not the bytes stored, and LZ4 compresses and decompresses several
-  times faster than gzip while compressing less. The price is the promise above: a reader needs the standard
-  LZ4 filter plugin, which is a package away, rather than nothing at all. A writer may be asked for gzip
-  instead where a file must be readable by a reader that cannot install one.
+- **Compression: LZ4, by the registered HDF5 filter.** Where field datasets are compressed, they are
+  compressed with LZ4 rather than with HDF5's built-in gzip: LZ4 compresses and decompresses several times
+  faster while compressing less, which is the right trade when a checkpoint is written every simulated hour
+  and read on every restart. The price is the promise above: a reader needs the standard LZ4 filter plugin,
+  which is a package away, rather than nothing at all. A writer may be asked for gzip instead where a file
+  must reach a reader that cannot install one.
+- **Whether to compress is decided, not assumed.** Compressing is not free: on storage faster than the
+  compressor, it makes writing slower, and the crossover sits in the range that separates a laptop's disk
+  from a shared parallel file system. The writer therefore takes `off`, `on` or `auto`.
+
+  `auto` decides from **declared inputs**, never from live timings: the storage bandwidth the site
+  configures or that a short calibration measures once at start-up, the compressor's measured rate, and the
+  ratio observed on the first chunks. Deciding from live timings would make two runs of the same simulation
+  produce different files, which is a poor property to debug against. **The decision and the inputs it was
+  made from are recorded in the file**, so any run can be explained afterwards.
+
+  The defaults are provisional until measured on real systems, and `docs/FINDINGS.md` records what they rest
+  on at any time.
 - **abm-io provides the filter itself**, with `H5Zregister`, implemented with the LZ4 it already links, so
   it reads and writes these files through HDF5's ordinary paths and needs no plugin of its own. The format
   is the registered filter's, so a reader with the plugin decodes the same bytes: the total decoded size as
@@ -159,6 +171,16 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
   readers, not on this library or its build.
 - **Restart guarantee:** restoring a checkpoint reproduces every field with the *checkpoint* role exactly, and
   a simulation continued from a checkpoint matches the uninterrupted run, given the same random streams.
+- **Compression is semantically invisible.** Whatever the compression decision, restoring a checkpoint gives
+  the same state: two checkpoints of the same simulation written with different decisions restore
+  identically. The policy can therefore be retuned, by us or by a site, without anyone re-examining whether
+  the science still holds. This is a proof obligation, not a hope; see milestone R.
+- **Memory while writing is bounded by the chunk, not by the population.** The writer walks the agents in
+  blocks of one chunk and fills every column's buffer in that single pass, so its peak is proportional to
+  *fields × chunk size* and does not grow with the number of agents: the same tens of megabytes at a hundred
+  thousand agents and at a billion. One pass over the agents per block, not one pass per field. HDF5's chunk
+  cache is sized to hold at least one chunk per open dataset, since a smaller cache turns every partial
+  chunk into a read, a modify and a write.
 - **Parallel runs:** each process writes its own agents. One file per process plus an index file is always
   available; with parallel HDF5, the processes may instead write one shared file collectively. The reader
   accepts both.

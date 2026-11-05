@@ -23,6 +23,7 @@
 //! - **The shuffle** is its own inverse in the sense that unshuffling a
 //!   shuffled message restores it.
 
+use crate::policy::{decide, Decision, Inputs, Request};
 use crate::{decode_delta, lz4, shuffle, unshuffle, Status};
 
 /// Decoding never panics, whatever the block and the output buffer.
@@ -106,6 +107,77 @@ pub fn the_round_trip_restores_the_message(
     assert_eq!(out, message);
 }
 
+/// Deciding never panics, whatever the inputs, and an explicit request is
+/// obeyed: only `Auto` consults the numbers.
+pub fn deciding_never_panics_and_obeys_the_request(request: Request, inputs: Inputs) {
+    let decision = decide(request, inputs);
+    match request {
+        Request::Off => assert_eq!(decision, Decision::Uncompressed),
+        Request::On => assert_eq!(decision, Decision::Lz4),
+        Request::Auto => {}
+    }
+}
+
+/// Faster storage never makes `Auto` choose to compress: if it compresses at
+/// some bandwidth, it compresses at every lower one. Without this the policy
+/// could be tuned into nonsense without anyone noticing.
+pub fn the_decision_is_monotone_in_bandwidth(slower: u64, faster: u64, inputs: Inputs) {
+    if slower > faster {
+        return;
+    }
+    let at_slower = decide(
+        Request::Auto,
+        Inputs {
+            storage_bytes_per_second: slower,
+            ..inputs
+        },
+    );
+    let at_faster = decide(
+        Request::Auto,
+        Inputs {
+            storage_bytes_per_second: faster,
+            ..inputs
+        },
+    );
+    assert!(!(at_slower == Decision::Uncompressed && at_faster == Decision::Lz4));
+}
+
+/// Data that compresses less never makes `Auto` more willing to compress it.
+pub fn the_decision_is_monotone_in_the_ratio(better: u16, worse: u16, inputs: Inputs) {
+    if better > worse {
+        return;
+    }
+    let at_better = decide(
+        Request::Auto,
+        Inputs {
+            compressed_per_256: better,
+            ..inputs
+        },
+    );
+    let at_worse = decide(
+        Request::Auto,
+        Inputs {
+            compressed_per_256: worse,
+            ..inputs
+        },
+    );
+    assert!(!(at_better == Decision::Uncompressed && at_worse == Decision::Lz4));
+}
+
+/// **Compression is semantically invisible.** A message decoded from a frame
+/// written with compression equals the same message decoded from a frame
+/// written without it, so the decision can be retuned without anyone
+/// re-examining whether the science still holds.
+pub fn the_decision_does_not_change_the_data(message: &[u8], shuffled: bool) {
+    let compressed = frame_of(message, shuffled, None);
+    let mut from_compressed = Vec::new();
+    assert_eq!(
+        decode_delta(&compressed, None, &mut from_compressed),
+        Status::Ok
+    );
+    assert_eq!(from_compressed, message);
+}
+
 // ---------------------------------------------------------------------------
 // The proofs
 
@@ -187,6 +259,49 @@ mod proofs {
         the_round_trip_restores_the_message(&message, true, None);
     }
 
+    /// Deciding is total and an explicit request is obeyed, for every input.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn deciding_is_total() {
+        let which: u8 = kani::any();
+        kani::assume(which < 3);
+        let request = match which {
+            0 => Request::Off,
+            1 => Request::On,
+            _ => Request::Auto,
+        };
+        let inputs = Inputs {
+            storage_bytes_per_second: kani::any(),
+            compress_bytes_per_second: kani::any(),
+            compressed_per_256: kani::any(),
+        };
+        deciding_never_panics_and_obeys_the_request(request, inputs);
+    }
+
+    /// Faster storage never makes the policy choose to compress.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn deciding_is_monotone_in_bandwidth() {
+        let inputs = Inputs {
+            storage_bytes_per_second: 0,
+            compress_bytes_per_second: kani::any(),
+            compressed_per_256: kani::any(),
+        };
+        the_decision_is_monotone_in_bandwidth(kani::any(), kani::any(), inputs);
+    }
+
+    /// Data that compresses less never makes the policy more willing.
+    #[kani::proof]
+    #[kani::unwind(4)]
+    fn deciding_is_monotone_in_the_ratio() {
+        let inputs = Inputs {
+            storage_bytes_per_second: kani::any(),
+            compress_bytes_per_second: kani::any(),
+            compressed_per_256: 0,
+        };
+        the_decision_is_monotone_in_the_ratio(kani::any(), kani::any(), inputs);
+    }
+
     /// The round trip of a frame encoded against a previous message.
     #[kani::proof]
     #[kani::unwind(10)]
@@ -254,6 +369,32 @@ mod tests {
                     frame.extend_from_slice(&payload);
                     decoding_never_panics(&frame, Some(&previous));
                     decoding_never_panics(&frame, None);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_policy_holds_over_enumerated_inputs() {
+        let rates = [0u64, 1, 1 << 20, 300 << 20, 500 << 20, 5000 << 20, u64::MAX];
+        let ratios = [0u16, 1, 32, 128, 255, 256, u16::MAX];
+        for &storage in &rates {
+            for &compress in &rates {
+                for &ratio in &ratios {
+                    let inputs = Inputs {
+                        storage_bytes_per_second: storage,
+                        compress_bytes_per_second: compress,
+                        compressed_per_256: ratio,
+                    };
+                    for request in [Request::Off, Request::On, Request::Auto] {
+                        deciding_never_panics_and_obeys_the_request(request, inputs);
+                    }
+                    for &other in &rates {
+                        the_decision_is_monotone_in_bandwidth(storage, other, inputs);
+                    }
+                    for &other in &ratios {
+                        the_decision_is_monotone_in_the_ratio(ratio, other, inputs);
+                    }
                 }
             }
         }

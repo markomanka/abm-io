@@ -31,6 +31,9 @@ jobs:
       matrix:
         harness:
           - decompressing_is_memory_safe
+          - deciding_is_total
+          - deciding_is_monotone_in_bandwidth
+          - deciding_is_monotone_in_the_ratio
           - decoding_is_memory_safe_for_small_claims
           - the_shuffle_is_reversible_for_any_message
           - the_round_trip_restores_a_plain_message

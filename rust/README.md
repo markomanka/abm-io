@@ -59,7 +59,13 @@ input, and a decoder's mistakes live in its first few bytes.
 
 ### What is proved, and what is not
 
-Six harnesses pass: the LZ4 block decoder is memory-safe for every one of the 2^32 four-byte blocks against
+Nine harnesses pass. Three concern the compression policy of
+[docs/INTEGRATION.md](../docs/INTEGRATION.md): deciding is total and obeys an explicit request, and the
+decision is monotone in the storage bandwidth and in the compression ratio, so the policy cannot be tuned
+Nine harnesses pass. Three concern the compression policy of
+[docs/INTEGRATION.md](../docs/INTEGRATION.md): deciding is total and obeys an explicit request, and the
+decision is monotone in the storage bandwidth and in the compression ratio, so the policy cannot be tuned
+into nonsense without a proof failing. The other six:
 a four-byte output; decoding is memory-safe for every 18-byte frame whose header claims at most eight bytes;
 unshuffling a shuffled message restores it; and a frame built from a message decodes back to exactly that
 message, plain, shuffled, and encoded against another message.
