@@ -131,7 +131,8 @@ the caller explicitly accepts the defaults. Reading the same file for analysis s
 
 ## Checkpoint files
 
-Checkpoints are HDF5 files, readable by any HDF5 tool, including `h5py`, without abm-io.
+Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has the standard filter plugins
+(`hdf5plugin` for Python, which `pip` and conda-forge both provide). See *Compression* below.
 
 ```
 /                      attributes: format version, producer (simulator, version), creation time
@@ -144,6 +145,16 @@ Checkpoints are HDF5 files, readable by any HDF5 tool, including `h5py`, without
 /host/<simulator>      anything else the simulator needs to resume, in its own layout
 ```
 
+- **Compression: LZ4, by the registered HDF5 filter.** Field datasets are chunked and compressed with LZ4
+  rather than with HDF5's built-in gzip. At the sizes these files reach, the cost that matters is the time
+  spent moving and transforming bytes, not the bytes stored, and LZ4 compresses and decompresses several
+  times faster than gzip while compressing less. The price is the promise above: a reader needs the standard
+  LZ4 filter plugin, which is a package away, rather than nothing at all. A writer may be asked for gzip
+  instead where a file must be readable by a reader that cannot install one.
+- **abm-io itself needs no plugin.** It compresses with the LZ4 it already links and hands HDF5 the finished
+  chunk through the direct chunk write, declaring the filter in the dataset so that other readers apply it;
+  reading its own files, it takes the raw chunk back and decompresses it the same way. The plugin is a
+  requirement on third-party readers, not on this library or its build.
 - **Restart guarantee:** restoring a checkpoint reproduces every field with the *checkpoint* role exactly, and
   a simulation continued from a checkpoint matches the uninterrupted run, given the same random streams.
 - **Parallel runs:** each process writes its own agents. One file per process plus an index file is always
