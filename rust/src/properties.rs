@@ -288,10 +288,15 @@ mod proofs {
     #[kani::proof]
     #[kani::unwind(4)]
     fn deciding_is_monotone_in_bandwidth() {
+        // The ratio keeps the domain its field is defined on, as in the proof
+        // below: this harness multiplies by it too, and without the bound it
+        // finishes only sometimes, which is no better than not finishing.
+        let ratio: u16 = kani::any();
+        kani::assume(ratio <= 256);
         let inputs = Inputs {
             storage_bytes_per_second: 0,
             compress_bytes_per_second: u64::from(kani::any::<u32>()),
-            compressed_per_256: kani::any(),
+            compressed_per_256: ratio,
         };
         the_decision_is_monotone_in_bandwidth(
             u64::from(kani::any::<u32>()),

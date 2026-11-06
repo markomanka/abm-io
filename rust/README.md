@@ -61,9 +61,10 @@ input, and a decoder's mistakes live in its first few bytes.
 
 Nine harnesses pass, the rates in the policy proofs taken over 32 bits, which covers every rate these
 files will meet: the rule multiplies two of its inputs, and a solver builds a multiplier as wide as the
-words it is given, so 64 symbolic bits on both sides does not finish in fifty minutes. The ratio proof also
-states the domain its field is defined on, at most 256, because its two decisions differ in the ratio and so
-cost two multipliers rather than one.
+words it is given, so 64 symbolic bits on both sides does not finish in fifty minutes. Both policy proofs also
+state
+the domain the ratio field is defined on, at most 256. Without it the bandwidth proof finished only
+sometimes, varying with the load on a shared runner, which is no better than not finishing.
 
 Three concern the compression policy of [docs/INTEGRATION.md](../docs/INTEGRATION.md): deciding is total
 and obeys an explicit request, and the decision is monotone in the storage bandwidth and in the
