@@ -167,7 +167,9 @@ Five things, none of them urgent, all of them cheaper to allow for now than to r
    mass is worse than a slow solver.
 5. **Weights are data, not code.** A learned component is identified by the content of its weights, and a
    run records which weights it used, as it records its parameters and its seed. Otherwise a result cannot
-   be reproduced even with the same source.
+   be reproduced even with the same source. **This one exists**: a checkpoint's `/components` table holds
+   a row per dependency with a name, a version, a role, a content digest and whether it affects results,
+   and a learned operation's weights are such a row ([INTEGRATION.md](INTEGRATION.md), "Provenance").
 
 ## What this note deliberately does not propose
 
