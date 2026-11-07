@@ -184,14 +184,16 @@ dependency, and the row is the same shape whatever the dependency is:
 `affects_results` is what makes this load-bearing rather than decorative. **The strict resume compares the
 components as well as the schema**: resuming with a different version of a component marked as affecting
 results fails and says which one changed. A visualisation library that moved on does not stop a restart; a
-gene-network solver that moved on does.
+gene-network solver that moved on does. A component counts as affecting results if it is declared to on
+either side, so a new version cannot slip through by changing its declaration at the same time.
 
 Failing is not refusing. A solver often changes because it was wrong before, and a run resumed on the
 corrected one is better science even though it is no longer the same run. So the resume can go ahead, under
 three conditions that make the cost visible rather than hidden:
 
 - **Acceptance is per component, by name.** `BlockingDifferences` takes the components the caller accepts,
-  not a flag meaning everything, so going ahead means naming what changed. An application asks a person at
+  not a flag meaning everything, so going ahead means naming what changed. Names are compared exactly:
+  accepting `libroad` accepts nothing about `libroadrunner`. An application asks a person at
   this point; the library only reports.
 - **The discontinuity is recorded, permanently.** Each accepted change adds a row to `/lineage`: the step,
   the component, the versions before and after, who accepted it and why. Every checkpoint written

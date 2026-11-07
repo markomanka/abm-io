@@ -161,6 +161,80 @@ TEST(Components, AcceptanceIsPerComponentAndNotABlanketFlag) {
   EXPECT_TRUE(BlockingDifferences(before, now, {"paraview"}, &blocking));
 }
 
+TEST(Components, AcceptanceComparesNamesExactly) {
+  // Accepting one component must never accept another whose name merely
+  // begins the same way, contains it, or differs in case.
+  const std::vector<ComponentRecord> before = {
+      Component("libroadrunner", "2.7", true),
+      Component("biodynamo", "1.06", true)};
+  std::vector<ComponentRecord> now = before;
+  now[0].version = "2.8";
+  now[1].version = "1.07";
+
+  std::vector<std::string> blocking;
+  EXPECT_TRUE(BlockingDifferences(before, now, {"libroad", "bio"}, &blocking));
+  EXPECT_EQ(blocking.size(), 2u);
+
+  blocking.clear();
+  EXPECT_TRUE(
+      BlockingDifferences(before, now, {"roadrunner", "BioDynaMo"}, &blocking));
+  EXPECT_EQ(blocking.size(), 2u);
+
+  blocking.clear();
+  EXPECT_TRUE(BlockingDifferences(before, now, {""}, &blocking));
+  EXPECT_EQ(blocking.size(), 2u);
+
+  blocking.clear();
+  EXPECT_FALSE(BlockingDifferences(before, now, {"libroadrunner", "biodynamo"},
+                                   &blocking));
+  EXPECT_TRUE(blocking.empty());
+}
+
+TEST(Components, ANameWithARoleIsAcceptedByItsName) {
+  // The message carries the role in parentheses; acceptance uses the name.
+  ComponentRecord solver = Component("solver", "2.1", true);
+  solver.role = "solver";
+  const std::vector<ComponentRecord> before = {solver};
+  std::vector<ComponentRecord> now = before;
+  now[0].version = "2.2";
+  std::vector<std::string> blocking;
+  EXPECT_TRUE(BlockingDifferences(before, now, {"solver (solver)"}, &blocking));
+  blocking.clear();
+  EXPECT_FALSE(BlockingDifferences(before, now, {"solver"}, &blocking));
+}
+
+TEST(Components, ChangingTheDeclarationDoesNotHideAChange) {
+  // Declared harmless when the checkpoint was written, declared to affect
+  // results now, and moved on: the new declaration applies.
+  const std::vector<ComponentRecord> before = {
+      Component("gradient solver", "1.0", false)};
+  std::vector<ComponentRecord> now = before;
+  now[0].version = "1.1";
+  now[0].affects_results = true;
+  std::vector<std::string> differences;
+  EXPECT_TRUE(ComponentsDiffer(before, now, &differences));
+  ASSERT_EQ(differences.size(), 1u);
+  EXPECT_NE(differences[0].find("was 1.0, is now 1.1"), std::string::npos)
+      << differences[0];
+
+  // The other way round: affecting results when written, declared harmless
+  // now, and moved on. Dropping the declaration does not let it through.
+  std::vector<ComponentRecord> before2 = before;
+  before2[0].affects_results = true;
+  std::vector<ComponentRecord> now2 = before2;
+  now2[0].version = "1.1";
+  now2[0].affects_results = false;
+  differences.clear();
+  EXPECT_TRUE(ComponentsDiffer(before2, now2, &differences));
+  EXPECT_EQ(differences.size(), 1u);
+
+  // Harmless on both sides: still free to move.
+  std::vector<ComponentRecord> now3 = before;
+  now3[0].version = "1.1";
+  differences.clear();
+  EXPECT_FALSE(ComponentsDiffer(before, now3, &differences));
+}
+
 TEST(Components, WhatDoesNotAffectResultsNeedsNoAcceptance) {
   const std::vector<ComponentRecord> before = {
       Component("paraview", "6.2", false)};

@@ -67,17 +67,21 @@ struct LineageRecord {
   std::string at;           ///< ISO 8601, UTC
 };
 
-/// Every difference between the components a checkpoint was written with and
-/// those present now, whether or not it affects results. Reporting only: the
-/// decision belongs to the caller.
+/// Every difference that affects results between the components a checkpoint
+/// was written with and those present now: a changed version, the same version
+/// with different content, a component gone or a new one. A component counts
+/// as affecting results if it is declared to on either side, so changing the
+/// declaration does not hide a change of version. Reporting only: the decision
+/// belongs to the caller.
 bool ComponentsDiffer(const std::vector<ComponentRecord>& before,
                       const std::vector<ComponentRecord>& now,
                       std::vector<std::string>* differences);
 
 /// The differences that stop a resume: those that affect results and whose
-/// component is not named in `accepted`. Acceptance is per component on
-/// purpose, so that going ahead means naming what changed rather than setting
-/// a flag that means everything. A caller that accepts a difference records a
+/// component is not named in `accepted`. Names are compared exactly; a prefix
+/// accepts nothing. Acceptance is per component on purpose, so that going
+/// ahead means naming what changed rather than setting a flag that means
+/// everything. A caller that accepts a difference records a
 /// LineageRecord for it, so the discontinuity travels with the result.
 bool BlockingDifferences(const std::vector<ComponentRecord>& before,
                          const std::vector<ComponentRecord>& now,
