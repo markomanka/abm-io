@@ -98,6 +98,7 @@ the decision's output would have caught:
 - an unknown compression ratio leaned towards not compressing while every other unknown leaned towards
   compressing. Since zero sits at the bottom of an ordered field, the monotonicity property rejected it
   immediately. All unknowns now lean the same way.
+
 ## What a reader sees when a checkpoint is interrupted
 
 A writer killed in the middle of a checkpoint is the normal case on a busy cluster or on preemptible cloud
@@ -121,8 +122,8 @@ times out of 100, where the naive layout managed 15.
 What this does not cover, and why the contract states a property rather than this mechanism, is in
 [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md), together with the two experiments still outstanding.
 
-The mechanism is ordinary and cheap. Renaming within a directory is atomic on POSIX file systems,
-either refers to the old content or to the new one. Writing the parts under temporary names, then the
+The mechanism is ordinary and cheap. Renaming within a directory is atomic on POSIX file systems:
+a reader opening the name finds either the old content or the new one, never a mixture. Writing the parts under temporary names, then the
 manifest, then the pointer, makes that atomicity cover the whole checkpoint rather than one file.
 
 ## References

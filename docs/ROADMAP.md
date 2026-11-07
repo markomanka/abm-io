@@ -20,7 +20,6 @@ issues are closed and its *done when* check passes.
 | Decisions | The open questions of `docs/INTEGRATION.md` | Each decision recorded in its issue |
 | *(not scheduled)* | Learned operations and live data from experiments: what to keep possible, in [LEARNED-OPERATIONS.md](LEARNED-OPERATIONS.md) | A design note, not a milestone |
 | *(not scheduled)* | Storage backends, and what transfers from the database world, in [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) | A design note, not a milestone |
-| *(not scheduled)* | Storage backends, and what transfers from the database world, in [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) | A design note, not a milestone |
 
 Milestones 1 to 4 can overlap; milestone 5 needs 1 and 2 for checkpoints, and 3 for exchange.
 Milestone R runs alongside the others: it touches only the decoders, whose message format is fixed
