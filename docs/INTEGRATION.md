@@ -143,6 +143,7 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 /records/<type>/<field>  one dataset per field, with one row, for the types below
 /random                a table: one row per random stream (generator key and counter)
 /components            a table: what this run depended on (see Provenance)
+/lineage               a table: every accepted discontinuity, carried by every later checkpoint
 /host/<simulator>      anything else the simulator needs to resume, in its own layout
 ```
 
@@ -154,7 +155,7 @@ both carry a version, both evolve by the rules above, and both are covered by th
 no second set of rules for "everything that is not an agent", which is what a simulation's own state,
 written in attributes, would have become.
 
-abm-io defines four types for what every simulation has; a simulator adds its own as it likes, and they are
+abm-io defines five types for what every simulation has; a simulator adds its own as it likes, and they are
 read back the same way:
 
 | Type | Shape | Holds |

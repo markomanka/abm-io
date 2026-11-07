@@ -224,6 +224,9 @@ thing to be proved.
 rule rather than remove it. Or evidence that HDF5's filter pipeline, which compresses on one thread per
 process, is the real ceiling: then the answer is not a better policy but compressing chunks on several
 threads and handing them over with the direct chunk write, which was prototyped and works.
+
+---
+
 ## 10. A checkpoint becomes visible only when it is complete
 
 **Decided.** Parts are written to temporary names and renamed; a manifest listing them is written last and
@@ -282,8 +285,6 @@ in the file, which is the most that can be true at once.
 **What would change our mind.** Evidence that people accept changes routinely without reading, which would
 mean the acceptance is too easy and should require the reason field to be non-empty; or a use where the
 lineage grows unmanageably, which would mean summarising it rather than dropping it.
-
----
 
 ---
 
