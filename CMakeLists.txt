@@ -57,7 +57,8 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 # --- library
-add_library(abmio src/exchange.cc src/codec.cc src/generated.cc src/schema.cc src/status.cc)
+add_library(abmio src/exchange.cc src/codec.cc src/generated.cc src/records.cc src/schema.cc
+                  src/status.cc)
 add_library(abmio::abmio ALIAS abmio)
 target_include_directories(abmio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(abmio PUBLIC ${ABMIO_LZ4} PRIVATE abmio_flags)
@@ -68,7 +69,7 @@ if(ABMIO_BUILD_TESTS)
   find_package(GTest REQUIRED)
   include(GoogleTest)
   add_executable(abmio_tests tests/exchange_test.cc tests/codec_test.cc tests/schema_test.cc
-                           tests/visit_test.cc tests/traits_test.cc)
+                           tests/visit_test.cc tests/traits_test.cc tests/records_test.cc)
   target_include_directories(abmio_tests PRIVATE tests)
   target_link_libraries(abmio_tests PRIVATE abmio GTest::gtest_main abmio_flags)
   gtest_discover_tests(abmio_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS unit)

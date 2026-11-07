@@ -137,13 +137,59 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 ```
 /                      attributes: format version, producer (simulator, version), creation time
 /schema                the type descriptions, as JSON
-/simulation            attributes: simulated time, step, time unit; simulator parameters as JSON
 /agents/<type>/uid     one entry per agent of that type
 /agents/<type>/<field> one dataset per field, column by column, chunked and compressed
 /environment/<name>    continuum fields (for example substance concentrations): values, origin, spacing, unit
-/random                state of every random stream (generator key and counter)
+/records/<type>/<field>  one dataset per field, with one row, for the types below
+/random                a table: one row per random stream (generator key and counter)
+/components            a table: what this run depended on (see Provenance)
 /host/<simulator>      anything else the simulator needs to resume, in its own layout
 ```
+
+### Tables and records
+
+A checkpoint holds **tables**, many instances of a described type, and **records**, exactly one. The two are
+the same thing: a record is a table with one row. Both are described in `/schema` like any other type, so
+both carry a version, both evolve by the rules above, and both are covered by the strict resume. There is
+no second set of rules for "everything that is not an agent", which is what a simulation's own state,
+written in attributes, would have become.
+
+abm-io defines four types for what every simulation has; a simulator adds its own as it likes, and they are
+read back the same way:
+
+| Type | Shape | Holds |
+| --- | --- | --- |
+| `abmio.Simulation` | record | the step, the simulated time and its unit |
+| `abmio.RandomStream` | table | one row per stream: its key, its counter, what it belongs to |
+| `abmio.Provenance` | record | what wrote this checkpoint: abm-io's version, the schema's digest, the seed, the compression decision and the inputs it was made from |
+| `abmio.Component` | table | one row per thing the run depended on (below) |
+
+The cost is nothing worth measuring: a few rows beside millions of agents.
+
+### Provenance: what a run depended on
+
+A result is only reproducible if what produced it is known. `/components` is a table with one row per
+dependency, and the row is the same shape whatever the dependency is:
+
+| Field | Meaning |
+| --- | --- |
+| `name` | what it is, for example `biodynamo`, `libroadrunner`, `the gradient solver`, an instrument |
+| `version` | its version as it reports it |
+| `role` | what it did in this run: an open vocabulary, with `simulator`, `solver`, `library`, `model`, `surrogate`, `instrument` recommended |
+| `digest` | a content hash where one can be had: of a library, of a model file, of a learned model's weights |
+| `affects_results` | whether a change to it changes what the simulation computes |
+| `reference` | optional: a DOI, a URL, a commit |
+
+`affects_results` is what makes this load-bearing rather than decorative. **The strict resume compares the
+components as well as the schema**: resuming with a different version of a component marked as affecting
+results fails and says which one changed, unless the caller accepts it explicitly. A visualisation library
+that moved on does not stop a restart; a gene-network solver that moved on does.
+
+The shape is deliberately one repeated row rather than a field per kind of dependency, so that a kind
+nobody has thought of yet needs no change to the format: a learned operation's weights, a feed of
+experimental data, a table of parameters fitted elsewhere are all rows with a role and a digest. See
+[LEARNED-OPERATIONS.md](LEARNED-OPERATIONS.md), where recording weights as data rather than as code is one
+of the things that note asks for, and which this provides.
 
 - **Compression: LZ4, by the registered HDF5 filter.** Where field datasets are compressed, they are
   compressed with LZ4 rather than with HDF5's built-in gzip: LZ4 compresses and decompresses several times
