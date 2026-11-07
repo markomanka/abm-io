@@ -224,6 +224,35 @@ thing to be proved.
 rule rather than remove it. Or evidence that HDF5's filter pipeline, which compresses on one thread per
 process, is the real ceiling: then the answer is not a better policy but compressing chunks on several
 threads and handing them over with the direct chunk write, which was prototyped and works.
+## 10. A checkpoint becomes visible only when it is complete
+
+**Decided.** Parts are written to temporary names and renamed; a manifest listing them is written last and
+renamed; the pointer to the newest checkpoint is replaced last of all. A reader sees the previous complete
+checkpoint or the new one, never a mixture.
+
+**Why, with numbers rather than argument.** A hundred writers were killed at random moments during a
+checkpoint. Written in place, with the pointer moved first, the reader saw a complete checkpoint 15 times,
+a partial one 81 times, and 4 times a file that was listed and could not be opened. With the manifest, 100
+times out of 100 it saw a complete checkpoint. The full measurement is in `docs/FINDINGS.md`.
+
+The four corrupt cases are the reason this is not a refinement. A partial checkpoint announces itself; a
+corrupt one is found only when a job has queued, started and taken its nodes.
+
+**Where the idea comes from.** The data-lake table formats, which solved the same problem for the same
+reason: many writers, no transactions, and readers who must never see a half-written state. This is the one
+idea from the database world that transfers to our write path intact. The rest of that machinery, logging,
+locking, multi-version visibility, exists to resolve conflicts between transactions, and a checkpoint has
+none: each rank owns its agents and nobody updates another's.
+
+**What it costs.** One rename per part, one small file, one more rename. Nothing measurable against the
+write itself.
+
+**What would change our mind.** A storage system where rename is not atomic, which is most object stores:
+there the same guarantee needs a conditional write or a versioned pointer instead, and the experiment should
+be repeated against one before any cloud backend is trusted, as
+[STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) records. That is why the rule is stated as "becomes
+visible only when complete" rather than as "rename the manifest": the property is what matters, and the
+mechanism for achieving it will differ per backend.
 
 ---
 
