@@ -73,4 +73,31 @@ bool ComponentsDiffer(const std::vector<ComponentRecord>& before,
   return differs;
 }
 
+bool BlockingDifferences(const std::vector<ComponentRecord>& before,
+                         const std::vector<ComponentRecord>& now,
+                         const std::vector<std::string>& accepted,
+                         std::vector<std::string>* blocking) {
+  std::vector<std::string> all;
+  if (!ComponentsDiffer(before, now, &all)) {
+    return false;
+  }
+  // A difference is accepted only if its component was named. The name comes
+  // first in every message ComponentsDiffer writes.
+  bool blocked = false;
+  for (const std::string& difference : all) {
+    const bool named =
+        std::any_of(accepted.begin(), accepted.end(),
+                    [&difference](const std::string& name) {
+                      return !name.empty() && difference.rfind(name, 0) == 0;
+                    });
+    if (!named) {
+      blocked = true;
+      if (blocking != nullptr) {
+        blocking->push_back(difference);
+      }
+    }
+  }
+  return blocked;
+}
+
 }  // namespace abmio

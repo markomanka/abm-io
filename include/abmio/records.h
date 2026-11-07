@@ -54,12 +54,52 @@ struct ComponentRecord {
   std::string reference;  ///< a DOI, a URL, a commit; optional
 };
 
-/// True when resuming with `now` in place of `before` must be refused: some
-/// component that affects results is absent, or is there with another version.
-/// Every difference is reported, not the first.
+/// One accepted discontinuity: a resume that went ahead although a component
+/// affecting results had changed. A run that carries these rows is not a
+/// continuation of the original, and says so; see docs/INTEGRATION.md.
+struct LineageRecord {
+  uint64_t step = 0;      ///< where the run was resumed
+  std::string component;  ///< which one changed
+  std::string from_version;
+  std::string to_version;
+  std::string accepted_by;  ///< who or what accepted it
+  std::string reason;       ///< why, in the accepter's words
+  std::string at;           ///< ISO 8601, UTC
+};
+
+/// Every difference between the components a checkpoint was written with and
+/// those present now, whether or not it affects results. Reporting only: the
+/// decision belongs to the caller.
 bool ComponentsDiffer(const std::vector<ComponentRecord>& before,
                       const std::vector<ComponentRecord>& now,
                       std::vector<std::string>* differences);
+
+/// The differences that stop a resume: those that affect results and whose
+/// component is not named in `accepted`. Acceptance is per component on
+/// purpose, so that going ahead means naming what changed rather than setting
+/// a flag that means everything. A caller that accepts a difference records a
+/// LineageRecord for it, so the discontinuity travels with the result.
+bool BlockingDifferences(const std::vector<ComponentRecord>& before,
+                         const std::vector<ComponentRecord>& now,
+                         const std::vector<std::string>& accepted,
+                         std::vector<std::string>* blocking);
+
+template <>
+struct TypeTraits<LineageRecord> {
+  static constexpr const char* kName = "abmio.Lineage";
+  static constexpr uint32_t kVersion = 1;
+  using Base = void;
+  template <class V>
+  static void Visit(V& v) {
+    v(Field("step"), &LineageRecord::step);
+    v(Field("component"), &LineageRecord::component);
+    v(Field("from_version"), &LineageRecord::from_version);
+    v(Field("to_version"), &LineageRecord::to_version);
+    v(Field("accepted_by"), &LineageRecord::accepted_by);
+    v(Field("reason"), &LineageRecord::reason);
+    v(Field("at"), &LineageRecord::at);
+  }
+};
 
 template <>
 struct TypeTraits<SimulationRecord> {

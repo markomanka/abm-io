@@ -133,5 +133,54 @@ TEST(Components, SomethingNewThatAffectsResultsIsADifference) {
   EXPECT_FALSE(ComponentsDiffer(before, now, &differences));
 }
 
+TEST(Components, AcceptanceIsPerComponentAndNotABlanketFlag) {
+  const std::vector<ComponentRecord> before = {
+      Component("solver", "2.1", true), Component("gene network", "0.9", true)};
+  std::vector<ComponentRecord> now = before;
+  now[0].version = "2.2";  // a fix that changes results, knowingly taken
+  now[1].version = "1.0";
+
+  // Nothing accepted: both differences stop the resume.
+  std::vector<std::string> blocking;
+  EXPECT_TRUE(BlockingDifferences(before, now, {}, &blocking));
+  EXPECT_EQ(blocking.size(), 2u);
+
+  // One accepted by name: the other still stops it.
+  blocking.clear();
+  EXPECT_TRUE(BlockingDifferences(before, now, {"solver"}, &blocking));
+  ASSERT_EQ(blocking.size(), 1u);
+  EXPECT_NE(blocking[0].find("gene network"), std::string::npos) << blocking[0];
+
+  // Both accepted by name: the resume may go ahead.
+  blocking.clear();
+  EXPECT_FALSE(
+      BlockingDifferences(before, now, {"solver", "gene network"}, &blocking));
+  EXPECT_TRUE(blocking.empty());
+
+  // A name that matches nothing accepts nothing.
+  EXPECT_TRUE(BlockingDifferences(before, now, {"paraview"}, &blocking));
+}
+
+TEST(Components, WhatDoesNotAffectResultsNeedsNoAcceptance) {
+  const std::vector<ComponentRecord> before = {
+      Component("paraview", "6.2", false)};
+  std::vector<ComponentRecord> now = before;
+  now[0].version = "6.3";
+  std::vector<std::string> blocking;
+  EXPECT_FALSE(BlockingDifferences(before, now, {}, &blocking));
+}
+
+TEST(Lineage, ADiscontinuityIsDescribedLikeAnyOtherType) {
+  Schema s;
+  s.types = {Describe<LineageRecord>()};
+  std::string why;
+  EXPECT_EQ(Validate(s, &why), Status::kOk) << why;
+  const TypeDescription d = Describe<LineageRecord>();
+  EXPECT_EQ(d.qualified_name, "abmio.Lineage");
+  ASSERT_EQ(d.fields.size(), 7u);
+  EXPECT_EQ(d.fields[0].element,
+            ElementType::kUInt64);  // the step it happened at
+}
+
 }  // namespace
 }  // namespace abmio

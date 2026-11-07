@@ -163,6 +163,7 @@ read back the same way:
 | `abmio.RandomStream` | table | one row per stream: its key, its counter, what it belongs to |
 | `abmio.Provenance` | record | what wrote this checkpoint: abm-io's version, the schema's digest, the seed, the compression decision and the inputs it was made from |
 | `abmio.Component` | table | one row per thing the run depended on (below) |
+| `abmio.Lineage` | table | one row per accepted discontinuity: where a resume went ahead although something changed |
 
 The cost is nothing worth measuring: a few rows beside millions of agents.
 
@@ -182,8 +183,22 @@ dependency, and the row is the same shape whatever the dependency is:
 
 `affects_results` is what makes this load-bearing rather than decorative. **The strict resume compares the
 components as well as the schema**: resuming with a different version of a component marked as affecting
-results fails and says which one changed, unless the caller accepts it explicitly. A visualisation library
-that moved on does not stop a restart; a gene-network solver that moved on does.
+results fails and says which one changed. A visualisation library that moved on does not stop a restart; a
+gene-network solver that moved on does.
+
+Failing is not refusing. A solver often changes because it was wrong before, and a run resumed on the
+corrected one is better science even though it is no longer the same run. So the resume can go ahead, under
+three conditions that make the cost visible rather than hidden:
+
+- **Acceptance is per component, by name.** `BlockingDifferences` takes the components the caller accepts,
+  not a flag meaning everything, so going ahead means naming what changed. An application asks a person at
+  this point; the library only reports.
+- **The discontinuity is recorded, permanently.** Each accepted change adds a row to `/lineage`: the step,
+  the component, the versions before and after, who accepted it and why. Every checkpoint written
+  afterwards carries those rows, so a result states its own discontinuities instead of appearing to be
+  something it is not.
+- **Nothing is silent.** A run with lineage rows is reproducible from its checkpoints and its lineage
+  together, and is not reproducible from the original seed alone. Both facts are in the file.
 
 The shape is deliberately one repeated row rather than a field per kind of dependency, so that a kind
 nobody has thought of yet needs no change to the format: a learned operation's weights, a feed of

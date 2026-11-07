@@ -256,6 +256,35 @@ mechanism for achieving it will differ per backend.
 
 ---
 
+## 11. A changed dependency stops a resume, and may be let through by name
+
+**Decided.** A checkpoint records what the run depended on. Resuming when something that affects results
+has changed fails, naming every change. The caller may accept changes **by naming each component**, never
+with a flag that accepts everything, and each acceptance is written into `/lineage` and carried by every
+checkpoint afterwards.
+
+**Why not simply refuse.** A solver's version often changes because it was wrong before. Refusing would
+force a choice between an obsolete dependency and starting again, and would push people towards whatever
+switch makes the check go away, which is how such checks die.
+
+**Why not simply warn.** A warning is read once and then scrolls past. The thing worth keeping is not the
+moment of consent but the record of it: a run that continued across a changed solver is not the run it
+started as, and that should be legible years later, in the file, without anyone remembering.
+
+**Why by name.** A blanket acceptance is a habit; naming the component is a sentence someone has to mean.
+It also degrades well: a new difference appearing later is not covered by yesterday's acceptance, so the
+check fires again precisely when something new has changed.
+
+**What this costs in reproducibility, stated plainly.** A run with lineage rows is reproducible from its
+checkpoints and its lineage together, and is not reproducible from its original seed alone. Both facts are
+in the file, which is the most that can be true at once.
+
+**What would change our mind.** Evidence that people accept changes routinely without reading, which would
+mean the acceptance is too easy and should require the reason field to be non-empty; or a use where the
+lineage grows unmanageably, which would mean summarising it rather than dropping it.
+
+---
+
 ---
 
 ## What this episode taught about the documents
