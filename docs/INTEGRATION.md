@@ -184,6 +184,11 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 - **Parallel runs:** each process writes its own agents. One file per process plus an index file is always
   available; with parallel HDF5, the processes may instead write one shared file collectively. The reader
   accepts both.
+- **A checkpoint becomes visible only when it is complete.** Each writer writes to a temporary name and
+  renames it, so a file never appears half-written. When every writer has finished, a **manifest** listing
+  the parts is written to a temporary name and renamed, and only then is the pointer to the newest
+  checkpoint replaced, by rename as well. A reader therefore sees either the previous complete checkpoint or
+  the new one, never a mixture, whatever moment a job is killed at. Measured: see `docs/FINDINGS.md`.
 - **At large process counts, writers are grouped.** One file per process is the form that must always work,
   not the form to use at any scale: on a parallel file system, tens of thousands of files per checkpoint
   become a metadata bottleneck, and closing them can cost more than the step that produced them. Writers are

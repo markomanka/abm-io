@@ -98,6 +98,29 @@ the decision's output would have caught:
 - an unknown compression ratio leaned towards not compressing while every other unknown leaned towards
   compressing. Since zero sits at the bottom of an ordered field, the monotonicity property rejected it
   immediately. All unknowns now lean the same way.
+## What a reader sees when a checkpoint is interrupted
+
+A writer killed in the middle of a checkpoint is the normal case on a busy cluster or on preemptible cloud
+instances, not an edge case. Two layouts were compared by killing a writer at a random moment, a hundred
+times each, and asking what a reader then observes. Sixteen ranks, 150,000 agents each, five fields: about
+93 MB and 0.12 s per checkpoint, with kills uniformly inside that window.
+
+| Writer | Complete | Partial | Corrupt |
+| --- | --- | --- | --- |
+| Pointer moved first, each rank written straight to its final name | 15 | 81 | 4 |
+| Temporary names renamed, manifest written last, pointer replaced last | **100** | 0 | 0 |
+
+*Complete* means the reader restored a whole checkpoint, *partial* that the pointer named a checkpoint whose
+parts were not all there, and *corrupt* that a file was listed and could not be opened at all.
+
+The four corrupt cases are the ones that matter. A partial checkpoint announces itself; a corrupt one is
+discovered only when a job has already queued, started and taken its nodes. With the manifest, the reader
+always saw a complete checkpoint, falling back to the previous one when the new one had not finished: 100
+times out of 100, where the naive layout managed 15.
+
+The mechanism is ordinary and cheap. Renaming within a directory is atomic on POSIX file systems, so a name
+either refers to the old content or to the new one. Writing the parts under temporary names, then the
+manifest, then the pointer, makes that atomicity cover the whole checkpoint rather than one file.
 
 ## References
 
