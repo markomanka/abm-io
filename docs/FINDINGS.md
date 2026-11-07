@@ -118,7 +118,10 @@ discovered only when a job has already queued, started and taken its nodes. With
 always saw a complete checkpoint, falling back to the previous one when the new one had not finished: 100
 times out of 100, where the naive layout managed 15.
 
-The mechanism is ordinary and cheap. Renaming within a directory is atomic on POSIX file systems, so a name
+What this does not cover, and why the contract states a property rather than this mechanism, is in
+[STORAGE-BACKENDS.md](STORAGE-BACKENDS.md), together with the two experiments still outstanding.
+
+The mechanism is ordinary and cheap. Renaming within a directory is atomic on POSIX file systems,
 either refers to the old content or to the new one. Writing the parts under temporary names, then the
 manifest, then the pointer, makes that atomicity cover the whole checkpoint rather than one file.
 

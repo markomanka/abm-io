@@ -249,7 +249,8 @@ write itself.
 
 **What would change our mind.** A storage system where rename is not atomic, which is most object stores:
 there the same guarantee needs a conditional write or a versioned pointer instead, and the experiment should
-be repeated against one before any cloud backend is trusted. That is why the rule is stated as "becomes
+be repeated against one before any cloud backend is trusted, as
+[STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) records. That is why the rule is stated as "becomes
 visible only when complete" rather than as "rename the manifest": the property is what matters, and the
 mechanism for achieving it will differ per backend.
 

@@ -14,7 +14,8 @@ then opens whatever it can find. Two writers are compared:
                renamed, and only then is the pointer replaced.
 
 Reported: what the reader sees, over many trials. The results are in
-`docs/FINDINGS.md`; the rule they led to is in `docs/INTEGRATION.md`.
+`docs/FINDINGS.md`; the rule they led to is in `docs/INTEGRATION.md`, and what
+remains to be measured, on object storage, is in `docs/STORAGE-BACKENDS.md`.
 
 Usage: bench/interrupted_checkpoint.py {in-place|manifest} TRIALS
 

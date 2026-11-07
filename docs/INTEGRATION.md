@@ -188,7 +188,10 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
   renames it, so a file never appears half-written. When every writer has finished, a **manifest** listing
   the parts is written to a temporary name and renamed, and only then is the pointer to the newest
   checkpoint replaced, by rename as well. A reader therefore sees either the previous complete checkpoint or
-  the new one, never a mixture, whatever moment a job is killed at. Measured: see `docs/FINDINGS.md`.
+  the new one, never a mixture, whatever moment a job is killed at. Measured: see
+  [FINDINGS.md](FINDINGS.md). The property is stated rather than the mechanism because rename is atomic
+  on POSIX file systems and is not on most object stores;
+  [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) records what would achieve it elsewhere.
 - **At large process counts, writers are grouped.** One file per process is the form that must always work,
   not the form to use at any scale: on a parallel file system, tens of thousands of files per checkpoint
   become a metadata bottleneck, and closing them can cost more than the step that produced them. Writers are
