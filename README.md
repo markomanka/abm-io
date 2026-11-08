@@ -38,6 +38,8 @@ simulators connect.
 | `docs/ROADMAP.md` | Milestones and how progress is tracked |
 | `docs/FINDINGS.md` | Measurements and observations behind the design |
 | `docs/QUALITY-GATES.md` | The checks every change passes, and how to add the benchmark machine |
+| `docs/VERSIONS.md` | What each version number delivers, what 1.0.0 promises, and how a version is cut |
+| `CHANGELOG.md` | What each version delivered, the decisions it rests on and the measurements behind them |
 | `docs/RATIONALE.md` | Decisions that were questioned: what was rejected, why, and what would change our mind |
 | `docs/GENERATOR.md` | How `abm-gen` writes type descriptions from a simulator's C++ headers |
 | `docs/STORAGE-BACKENDS.md` | A design note: one contract, several places to put the bytes |
