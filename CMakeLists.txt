@@ -18,6 +18,8 @@ option(ABMIO_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(ABMIO_COVERAGE "Instrument for coverage" OFF)
 option(ABMIO_BUILD_GENERATOR_TESTS "Test abm-gen (needs Python 3 with the libclang and PyYAML packages)" OFF)
 option(ABMIO_RUST_CODEC "Build the Rust decoder and compare it with the C++ one (needs cargo); see rust/README.md" OFF)
+option(ABMIO_HDF5 "Build what needs HDF5: the LZ4 filter now, the checkpoint container next" ON)
+option(ABMIO_HIGHFIVE "Also build the HighFive side of the binding comparison (docs/RATIONALE.md entry 12)" OFF)
 set(ABMIO_SANITIZE "" CACHE STRING "Sanitizers, e.g. address,undefined or thread")
 
 # --- LZ4: pkg-config first, plain search as fallback
@@ -34,6 +36,14 @@ else()
   target_include_directories(abmio_lz4 INTERFACE ${LZ4_INCLUDE_DIR})
   target_link_libraries(abmio_lz4 INTERFACE ${LZ4_LIBRARY})
   set(ABMIO_LZ4 abmio_lz4)
+endif()
+
+# --- HDF5, and HighFive for the binding comparison
+if(ABMIO_HDF5)
+  find_package(HDF5 REQUIRED COMPONENTS C)
+  if(ABMIO_HIGHFIVE)
+    find_package(HighFive REQUIRED)
+  endif()
 endif()
 
 # --- shared compile settings
@@ -62,6 +72,24 @@ add_library(abmio src/exchange.cc src/codec.cc src/generated.cc src/records.cc s
 add_library(abmio::abmio ALIAS abmio)
 target_include_directories(abmio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(abmio PUBLIC ${ABMIO_LZ4} PRIVATE abmio_flags)
+target_sources(abmio PRIVATE src/h5lz4_codec.cc)  # the filter's codec needs only LZ4
+if(ABMIO_HDF5)
+  target_sources(abmio PRIVATE src/h5lz4.cc)  # its registration with HDF5
+  target_link_libraries(abmio PUBLIC HDF5::HDF5)
+endif()
+
+# --- the binding comparison: the same checkpoint writer and reader on the
+# C API and, when asked, on HighFive, behind one interface (bench/h5binding)
+if(ABMIO_HDF5 AND (ABMIO_BUILD_TESTS OR ABMIO_BUILD_BENCHMARKS))
+  add_library(abmio_h5binding STATIC bench/h5binding/common.cc bench/h5binding/c_api.cc)
+  target_include_directories(abmio_h5binding PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/bench)
+  target_link_libraries(abmio_h5binding PUBLIC abmio PRIVATE abmio_flags)
+  if(ABMIO_HIGHFIVE)
+    target_sources(abmio_h5binding PRIVATE bench/h5binding/highfive.cc)
+    target_compile_definitions(abmio_h5binding PUBLIC ABMIO_HAVE_HIGHFIVE)
+    target_link_libraries(abmio_h5binding PRIVATE HighFive::HighFive)
+  endif()
+endif()
 
 # --- tests
 if(ABMIO_BUILD_TESTS)
@@ -73,6 +101,12 @@ if(ABMIO_BUILD_TESTS)
   target_include_directories(abmio_tests PRIVATE tests)
   target_link_libraries(abmio_tests PRIVATE abmio GTest::gtest_main abmio_flags)
   gtest_discover_tests(abmio_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS unit)
+  target_sources(abmio_tests PRIVATE tests/h5lz4_codec_test.cc)
+  if(ABMIO_HDF5)
+    add_executable(abmio_hdf5_tests tests/h5lz4_test.cc tests/h5binding_test.cc)
+    target_link_libraries(abmio_hdf5_tests PRIVATE abmio abmio_h5binding GTest::gtest_main abmio_flags)
+    gtest_discover_tests(abmio_hdf5_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS container)
+  endif()
   if(ABMIO_RUST_CODEC)
     # The Rust decoder of milestone R: built by cargo, linked as a static
     # library, and compared with the C++ decoder on the same inputs.
@@ -151,11 +185,15 @@ if(ABMIO_BUILD_BENCHMARKS)
     target_include_directories(${tool} PRIVATE tests)
     target_link_libraries(${tool} PRIVATE abmio abmio_flags)
   endforeach()
+  if(ABMIO_HDF5)
+    add_executable(abmio_h5binding_compare bench/h5binding/compare.cc)
+    target_link_libraries(abmio_h5binding_compare PRIVATE abmio_h5binding abmio_flags)
+  endif()
 endif()
 
 # --- fuzz harnesses
 if(ABMIO_BUILD_FUZZERS)
-  foreach(f fuzz_unpack fuzz_delta)
+  foreach(f fuzz_unpack fuzz_delta fuzz_h5lz4)
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       add_executable(${f} fuzz/${f}.cc)
       target_link_options(${f} PRIVATE -fsanitize=fuzzer)

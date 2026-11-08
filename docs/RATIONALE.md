@@ -221,7 +221,9 @@ wall from the path explosion that bounded the decoder proofs, and worth knowing 
 thing to be proved.
 
 **What would change our mind.** A measurement placing the crossover somewhere else, which would move the
-rule rather than remove it. Or evidence that HDF5's filter pipeline, which compresses on one thread per
+rule rather than remove it. The first measurements, from the binding comparison in `docs/FINDINGS.md`, go
+the other way: compressing costs a factor of 2.0 and 1.8 on two machines writing to memory, with the
+compressor faster than assumed, so the crossover sits where the arithmetic put it or a little higher. Or evidence that HDF5's filter pipeline, which compresses on one thread per
 process, is the real ceiling: then the answer is not a better policy but compressing chunks on several
 threads and handing them over with the direct chunk write, which was prototyped and works.
 
@@ -285,6 +287,55 @@ in the file, which is the most that can be true at once.
 **What would change our mind.** Evidence that people accept changes routinely without reading, which would
 mean the acceptance is too easy and should require the reason field to be non-empty; or a use where the
 lineage grows unmanageably, which would mean summarising it rather than dropping it.
+
+---
+
+## 12. HighFive or HDF5's C API: decided by the rule below, not by preference
+
+**Open, with the rule written before the measurement.** The checkpoint container talks to HDF5 either
+through its C API directly or through HighFive, a header-only C++ wrapper over that API. Each side has an
+obvious argument (the wrapper is shorter to write; the C API is one dependency fewer) and neither argument
+is a measurement, so the choice is made by the comparison below, and this entry records the rule first so
+that the result cannot shape it.
+
+**What is compared.** The same small writer and reader, written twice: a handful of agent columns written
+chunk by chunk into extendable, LZ4-compressed datasets, a record and two tables with strings, read back
+whole. Both live in `bench/h5binding/`, behind one interface, so the harness and the tests do not know
+which they are running.
+
+**The questions, in the order they weigh.**
+
+1. **What each can do without falling back to the C API.** Four things the contract requires: declaring
+   the registered LZ4 filter (32004) on a dataset; sizing the chunk cache per dataset; variable-length
+   strings in tables; chunk-bounded writing, that is extending a dataset and writing one chunk's worth at a
+   time. For each, the answer is *native*, *through an escape hatch the binding documents and keeps* (a raw
+   property-list call, an exposed `hid_t`), or *not possible*. Registering the filter itself is `H5Zregister`
+   on either side and is not counted.
+2. **Whether the files are the same.** Compared with `h5diff` (contents), `h5dump -pH` (structure and
+   storage layout) and `cmp` (bytes); each reader reads the other's file; `h5py` with `hdf5plugin` reads
+   both. Different bytes with identical contents and layout are a note, not a fault.
+3. **Throughput and peak memory**, writing and reading, with and without the filter, at a size where the
+   chunk bound matters. These count only from the dedicated machine; numbers from a shared sandbox are
+   recorded to catch a gross difference and for nothing else.
+4. **Build and packaging cost.** Whether the binding is packaged where abm-io is built: conda-forge and
+   Spack (the routes the contract names), Homebrew and Ubuntu's archive (the CI matrix). Which HDF5 versions
+   it supports, since conda-forge ships HDF5 2.x and Ubuntu 1.10. The length of each implementation.
+
+**The rule.**
+
+- HighFive is chosen if every item of (1) is native or goes through one documented escape hatch; the files
+  read interchangeably (2); on the dedicated machine it is within 5 % of the C API's throughput and 10 % of
+  its peak memory (3); it is packaged on conda-forge, Spack and Homebrew, and supports the HDF5 versions
+  the build matrix uses (4); and its implementation is shorter than the C API's by enough to notice, which
+  is set at one third fewer lines, because brevity is the whole of what a wrapper offers.
+- The C API is chosen if any of those fails. A tie, or a difference inside the noise, goes to the C API,
+  for the reason entry 4 gives: another dependency needs a reason, and "about the same" is not one.
+- Whichever is chosen, the filter, the chunk cache, the strings and the chunk-bounded writing are tested the
+  same way, so the choice can be reversed later on the same evidence.
+
+**What would change our mind afterwards.** A binding that is chosen and then falls behind HDF5 releases, or
+a C API implementation that grows past the point where the wrapper's brevity would have paid: both are
+visible in the repository, and the comparison can be rerun.
 
 ---
 

@@ -39,7 +39,7 @@ in a documented format.
 | Schema | Describes agent and behaviour types: their fields, field types, units and roles | In progress: descriptions, identifiers, the visitor protocol (`include/abmio/schema.h`) and the generator `abm-gen`; its validation on BioDynaMo next |
 | Codecs | Packs fields into rows or columns; delta encoding against a previous frame; compression | Prototype, tested and fuzzed |
 | Exchange | Packs and unpacks agents for neighbouring processes into receiver-owned memory (arenas) | Prototype, tested with MPI; packs the fields with the exchange role through the visitor protocol |
-| Containers | Checkpoint files (HDF5) and visualization files (VTKHDF) | To build |
+| Containers | Checkpoint files (HDF5) and visualization files (VTKHDF) | In progress: the LZ4 filter is registered and tested (`include/abmio/h5lz4.h`); the binding is being chosen by the comparison in `bench/h5binding/` (`docs/RATIONALE.md`, entry 12) |
 | Adapters | Connect a simulator: BioDynaMo (generated), PhysiCell (hand-written) | To build |
 
 Each layer uses only the layers above it. A simulator can use the schema and containers without the exchange
