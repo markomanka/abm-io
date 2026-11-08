@@ -67,31 +67,70 @@ impl Inputs {
     /// while the cost of not compressing storage that is slow is a simulation
     /// waiting on its checkpoint. Leaning one way for one unknown and the other
     /// way for another also breaks monotonicity, which the proofs reject.
-    fn compression_pays(&self) -> bool {
-        if self.storage_bytes_per_second == 0
-            || self.compress_bytes_per_second == 0
-            || self.compressed_per_256 == 0
-        {
-            return true;
+    ///
+    /// The rule is written in two steps on purpose. The right-hand side
+    /// depends only on the compressor and the ratio, and is computed once as
+    /// a [`Threshold`]; the storage bandwidth is then compared against it by
+    /// [`pays_against`]. The split lets the monotonicity proof take the
+    /// threshold as a symbolic number instead of making the solver build the
+    /// multiplier that produces it, which is what put the proof past its time
+    /// limit (`docs/RATIONALE.md`, entry 9). This is the first step, the
+    /// part of the rule that does not depend on the storage bandwidth.
+    pub fn threshold(&self) -> Threshold {
+        if self.compress_bytes_per_second == 0 || self.compressed_per_256 == 0 {
+            return Threshold::Compress; // unknown: lean towards compressing
         }
         let ratio = self.compressed_per_256;
         if ratio >= 256 {
-            return false; // the data does not compress: never pay for it
+            return Threshold::Never; // the data does not compress: never pay for it
         }
-        let writing_it_whole = u128::from(self.storage_bytes_per_second) * 256;
-        let compressing_then_writing =
-            u128::from(self.compress_bytes_per_second) * u128::from(256 - ratio);
-        writing_it_whole < compressing_then_writing
+        Threshold::Compare(u128::from(self.compress_bytes_per_second) * u128::from(256 - ratio))
+    }
+}
+
+/// The right-hand side of the comparison, from the compressor and the ratio
+/// alone: the two cases decided without arithmetic, and the product
+/// `compress * (256 - ratio)` otherwise.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Threshold {
+    /// An unknown input: compress.
+    Compress,
+    /// Data that does not compress: never.
+    Never,
+    /// Compare `storage * 256` against this.
+    Compare(u128),
+}
+
+/// Whether compressing pays at `storage` bytes per second against a
+/// threshold. Unknown storage (zero) is treated as slow storage.
+pub fn pays_against(storage: u64, threshold: Threshold) -> bool {
+    if storage == 0 {
+        return true;
+    }
+    match threshold {
+        Threshold::Compress => true,
+        Threshold::Never => false,
+        Threshold::Compare(compressing_then_writing) => {
+            u128::from(storage) * 256 < compressing_then_writing
+        }
     }
 }
 
 /// The decision, and the only place it is made.
 pub fn decide(request: Request, inputs: Inputs) -> Decision {
+    decide_against(request, inputs.storage_bytes_per_second, inputs.threshold())
+}
+
+/// The decision with the threshold already computed. `decide` is this
+/// function applied to `inputs.threshold()`, so a property proved of it for
+/// every threshold holds of `decide` for every input, by substitution and
+/// without a solver.
+pub fn decide_against(request: Request, storage: u64, threshold: Threshold) -> Decision {
     match request {
         Request::Off => Decision::Uncompressed,
         Request::On => Decision::Lz4,
         Request::Auto => {
-            if inputs.compression_pays() {
+            if pays_against(storage, threshold) {
                 Decision::Lz4
             } else {
                 Decision::Uncompressed

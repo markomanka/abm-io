@@ -25,7 +25,10 @@ jobs:
   proofs:
     name: ${{ matrix.harness }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    # The ratio proof builds two 32-by-9-bit multipliers and has taken 42
+    # minutes on a GitHub runner; the limit leaves it room without letting a
+    # proof that will never finish run for GitHub's six hours.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
