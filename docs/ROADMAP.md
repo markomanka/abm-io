@@ -7,6 +7,9 @@ visualization, without slowing them down. `docs/INTEGRATION.md` specifies the de
 Each milestone below is a GitHub milestone with one issue per piece of work. A milestone is done when its
 issues are closed and its *done when* check passes.
 
+Milestones map to version numbers in [VERSIONS.md](VERSIONS.md), which also says what 1.0.0 promises
+and what to do when a version is cut.
+
 | Milestone | Work | Done when |
 | --- | --- | --- |
 | 0 · Test bed and baselines | CI on every change (build matrix, sanitizers, fuzzing, MPI, coverage, static analysis); a dedicated benchmark machine; a multi-node allocation | Baselines recorded on the benchmark machine; CI green |
