@@ -81,13 +81,15 @@ here and must be before the defaults are trusted:
 | --- | --- | --- |
 | Gather bound, reading the fields of an agent | 27–55 ns | measured, see above |
 | Checkpointed state per agent | about 120 bytes | fifteen fields of a cell-like agent |
-| LZ4 compression rate, one core | about 500 MB/s | typical, to measure on the target machine |
+| LZ4 compression rate, one core | about 500 MB/s assumed; 0.8–1.0 GB/s measured through HDF5's filter pipeline | the binding comparison below: the LZ4 write of 44 MB took 44 ms longer than the uncompressed one in the sandbox and 53 ms longer on the laptop |
 | LZ4 decompression rate, one core | several GB/s | typical, to measure |
 
 For a million agents: the gather costs about 55 ms, compressing the resulting 120 MB about 240 ms, and
 writing the compressed 15 MB almost nothing. Uncompressed, the same checkpoint costs the gather plus
 writing 120 MB. Compression therefore pays when the storage is slower than roughly a gigabyte per second,
-and costs about a factor of two on faster storage. Restoring is the easier direction, since LZ4
+and costs about a factor of two on faster storage; the binding comparison below measured that factor on
+two machines, 2.0 and 1.8, with the compressor faster than assumed, so the crossover moves up with it and
+the rule stands. Restoring is the easier direction, since LZ4
 decompresses several times faster than it compresses, and is bound by scattering values back into agents.
 
 **What writing the properties found, before any container existed.** Two faults, neither of which a test of
@@ -190,11 +192,39 @@ library, paid once per file that includes it. One C API detail the comparison su
 which frees the strings HDF5 allocates on reading, was renamed `H5Treclaim` in 1.12 and the old name is
 gone from 2.x, so the C side carries a version check that HighFive hides.
 
-**What is decided and what is not.** Questions 1 and 2 are answered above, and 4 except for Homebrew;
-question 3 is not, and the rule makes the choice wait for the dedicated machine. The sandbox numbers suggest
-the two will land inside the thresholds. If they do and Homebrew has the package, HighFive passes every
-clause as written, and the two unlisted C calls are the one fact the rule did not foresee; they are left
-for the decision to weigh rather than folded into the rule after the event.
+**Second run, on a laptop.** The same build on an i9-12900HK under Ubuntu 26.04 (20 threads, `powersave`
+governor, nothing else running, files on a tmpfs, chosen so that no disk sits between the bindings), from
+conda-forge packages: HDF5 2.2.0, HighFive 3.3.0, h5py 3.16 with hdf5plugin 7.1. Everything above held
+again: all tests pass on HDF5 2.x, the files are byte for byte identical, h5py reads all four, each binding
+reads the other's. Five runs of a million agents, each binding reading its own file; medians, with the
+spread between the fastest and the slowest run of the five. **The rates are to memory, not to a disk:**
+they measure the binding and HDF5, and say nothing about the laptop's storage.
+
+| Phase | C API | HighFive | HighFive against C API | Spread within a binding |
+| --- | --- | --- | --- | --- |
+| Write, uncompressed | 69 ms, 637 MB/s | 73 ms, 599 MB/s | +5.8 % | 14 % and 23 % |
+| Write, LZ4 | 122 ms, 360 MB/s | 128 ms, 344 MB/s | +4.9 % | 16 % and 17 % |
+| Read, uncompressed | 58 ms, 752 MB/s | 54 ms, 810 MB/s | −6.9 % | 33 % and 35 % |
+| Read, LZ4 | 87 ms, 507 MB/s | 89 ms, 493 MB/s | +2.3 % | 13 % and 10 % |
+| Peak resident size | 45–50 MiB | 46–50 MiB | within 1 % | |
+
+The differences between the bindings are smaller than the differences between two runs of the same
+binding, and their sign changes with the phase; at ten million agents they were −7 %, +5 %, +9 % and −2 %
+in the same four phases. The peak resident size is the same to within a mebibyte, and still bounded by
+the chunk: 46 to 52 MiB from one million agents to ten (the baseline is higher than the sandbox's 17 MiB
+because HDF5 2.2 and the conda-forge runtime are larger, by the same amount for both). Writing to
+memory rather than a disk, LZ4 still halves the write rate, 360 against 637 MB/s.
+
+**What is decided and what is not.** Questions 1 and 2 are answered, and 4 except for Homebrew. On
+question 3 the two machines agree: no systematic difference can be seen, and what can be seen is the
+noise of the machine, which on the laptop is 10 to 35 % between runs. The rule asks for the dedicated
+machine's 5 %, and a laptop with a boosting clock cannot resolve 5 %; what it can say is that a
+systematic cost of that size would have to hide inside a spread three times larger and change sign from
+phase to phase, which is not what a cost does. The reason is visible in the code: both bindings make the
+same five `H5Dwrite` calls per block of 16,384 agents, and HighFive adds a few function calls around each,
+nanoseconds against milliseconds. So the evidence supports the decision, and the two unlisted C calls
+are the one fact the rule did not foresee; they are left for the decision to weigh rather than folded
+into the rule after the event.
 
 ## References
 

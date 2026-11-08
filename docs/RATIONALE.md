@@ -221,7 +221,9 @@ wall from the path explosion that bounded the decoder proofs, and worth knowing 
 thing to be proved.
 
 **What would change our mind.** A measurement placing the crossover somewhere else, which would move the
-rule rather than remove it. Or evidence that HDF5's filter pipeline, which compresses on one thread per
+rule rather than remove it. The first measurements, from the binding comparison in `docs/FINDINGS.md`, go
+the other way: compressing costs a factor of 2.0 and 1.8 on two machines writing to memory, with the
+compressor faster than assumed, so the crossover sits where the arithmetic put it or a little higher. Or evidence that HDF5's filter pipeline, which compresses on one thread per
 process, is the real ceiling: then the answer is not a better policy but compressing chunks on several
 threads and handing them over with the direct chunk write, which was prototyped and works.
 
