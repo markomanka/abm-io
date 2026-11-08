@@ -23,7 +23,7 @@
 //! - **The shuffle** is its own inverse in the sense that unshuffling a
 //!   shuffled message restores it.
 
-use crate::policy::{decide, Decision, Inputs, Request};
+use crate::policy::{decide, decide_against, Decision, Inputs, Request, Threshold};
 use crate::{decode_delta, lz4, shuffle, unshuffle, Status};
 
 /// Decoding never panics, whatever the block and the output buffer.
@@ -121,24 +121,18 @@ pub fn deciding_never_panics_and_obeys_the_request(request: Request, inputs: Inp
 /// Faster storage never makes `Auto` choose to compress: if it compresses at
 /// some bandwidth, it compresses at every lower one. Without this the policy
 /// could be tuned into nonsense without anyone noticing.
-pub fn the_decision_is_monotone_in_bandwidth(slower: u64, faster: u64, inputs: Inputs) {
+///
+/// Stated against a threshold rather than against inputs: the threshold is
+/// what the compressor and the ratio contribute, and `decide` is
+/// `decide_against` applied to `inputs.threshold()`, so holding for every
+/// threshold is holding for every input. The proof then has no multiplier to
+/// build, only a comparison.
+pub fn the_decision_is_monotone_in_bandwidth(slower: u64, faster: u64, threshold: Threshold) {
     if slower > faster {
         return;
     }
-    let at_slower = decide(
-        Request::Auto,
-        Inputs {
-            storage_bytes_per_second: slower,
-            ..inputs
-        },
-    );
-    let at_faster = decide(
-        Request::Auto,
-        Inputs {
-            storage_bytes_per_second: faster,
-            ..inputs
-        },
-    );
+    let at_slower = decide_against(Request::Auto, slower, threshold);
+    let at_faster = decide_against(Request::Auto, faster, threshold);
     assert!(!(at_slower == Decision::Uncompressed && at_faster == Decision::Lz4));
 }
 
@@ -284,25 +278,23 @@ mod proofs {
     // 64 symbolic bits on both sides does not finish in fifty minutes while 32
     // does.
 
-    /// Faster storage never makes the policy choose to compress.
+    /// Faster storage never makes the policy choose to compress, for every
+    /// threshold the compressor and the ratio can produce, and the full 64
+    /// bits of both bandwidths. An earlier version took the inputs instead
+    /// and made the solver build the multiplier behind the threshold twice;
+    /// bounded to 32-bit rates it finished in under fifty minutes on some
+    /// runners and not on others, which is no proof at all.
     #[kani::proof]
     #[kani::unwind(4)]
     fn deciding_is_monotone_in_bandwidth() {
-        // The ratio keeps the domain its field is defined on, as in the proof
-        // below: this harness multiplies by it too, and without the bound it
-        // finishes only sometimes, which is no better than not finishing.
-        let ratio: u16 = kani::any();
-        kani::assume(ratio <= 256);
-        let inputs = Inputs {
-            storage_bytes_per_second: 0,
-            compress_bytes_per_second: u64::from(kani::any::<u32>()),
-            compressed_per_256: ratio,
+        let which: u8 = kani::any();
+        kani::assume(which < 3);
+        let threshold = match which {
+            0 => Threshold::Compress,
+            1 => Threshold::Never,
+            _ => Threshold::Compare(kani::any()),
         };
-        the_decision_is_monotone_in_bandwidth(
-            u64::from(kani::any::<u32>()),
-            u64::from(kani::any::<u32>()),
-            inputs,
-        );
+        the_decision_is_monotone_in_bandwidth(kani::any(), kani::any(), threshold);
     }
 
     /// Data that compresses less never makes the policy more willing.
@@ -413,7 +405,7 @@ mod tests {
                         deciding_never_panics_and_obeys_the_request(request, inputs);
                     }
                     for &other in &rates {
-                        the_decision_is_monotone_in_bandwidth(storage, other, inputs);
+                        the_decision_is_monotone_in_bandwidth(storage, other, inputs.threshold());
                     }
                     for &other in &ratios {
                         the_decision_is_monotone_in_the_ratio(ratio, other, inputs);

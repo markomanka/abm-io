@@ -59,12 +59,13 @@ input, and a decoder's mistakes live in its first few bytes.
 
 ### What is proved, and what is not
 
-Nine harnesses pass, the rates in the policy proofs taken over 32 bits, which covers every rate these
-files will meet: the rule multiplies two of its inputs, and a solver builds a multiplier as wide as the
-words it is given, so 64 symbolic bits on both sides does not finish in fifty minutes. Both policy proofs also
-state
-the domain the ratio field is defined on, at most 256. Without it the bandwidth proof finished only
-sometimes, varying with the load on a shared runner, which is no better than not finishing.
+Nine harnesses pass. The policy rule multiplies two of its inputs, and a solver builds a multiplier as
+wide as the words it is given, so the proof that is monotone in the ratio takes its rates over 32 bits,
+which covers every rate these files will meet, and states the domain of the ratio field, at most 256.
+The proof that is monotone in the bandwidth used to do the same and finished only sometimes, varying
+with the runner; it is now stated against the threshold the compressor and the ratio produce, which the
+rule computes in a step of its own, so it covers every threshold and the full 64 bits of both bandwidths
+with no multiplier to build (`docs/RATIONALE.md`, entry 9).
 
 Three concern the compression policy of [docs/INTEGRATION.md](../docs/INTEGRATION.md): deciding is total
 and obeys an explicit request, and the decision is monotone in the storage bandwidth and in the
