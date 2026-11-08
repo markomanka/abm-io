@@ -126,6 +126,76 @@ The mechanism is ordinary and cheap. Renaming within a directory is atomic on PO
 a reader opening the name finds either the old content or the new one, never a mixture. Writing the parts under temporary names, then the
 manifest, then the pointer, makes that atomicity cover the whole checkpoint rather than one file.
 
+## HighFive or the C API: the comparison, first run
+
+The rule is `docs/RATIONALE.md` entry 12, written before this ran. The harness is `bench/h5binding/`: the
+same checkpoint writer and reader on the C API and on HighFive 3.3.0 behind one interface, five agent
+columns written one chunk at a time into extendable datasets, a record and two tables with variable-length
+strings, read back block by block and checked against the generator. `abmio_h5binding_compare` times each
+phase in a child process and reports its peak resident size; `compare.py` runs it and then `h5diff`,
+`h5dump -pH`, `cmp` and `h5py` on the files. Run here on a shared sandbox (Ubuntu 24.04, HDF5 1.10.10,
+GCC 13), which settles the capability and file questions and nothing about speed.
+
+**1. What each can do without the C API.** Of the four things the rule names, HighFive does three natively
+(the chunk cache through `Caching`, variable-length strings through `std::vector<std::string>`, chunk-bounded
+writing through `resize` and `select(...).write_raw`) and the LZ4 filter through one escape hatch: it has
+properties for gzip, szip and shuffle but none for a filter by identifier, so the filter is a class of our
+own with `apply(hid_t)` around `H5Pset_filter`, which `DataSetCreateProps::add` accepts. That is the hatch
+HighFive documents, and it passes the rule as written.
+
+The measurement then found two more C calls the rule had not listed, both in `bench/h5binding/highfive.cc`,
+marked where they occur. **Fill time**: HDF5 leaves the unwritten part of a partial last chunk
+uninitialised unless told to fill on allocation, so the same agents gave files that differed in 17 bytes
+from one run to the next, in bytes nobody wrote; `H5Pset_fill_time(H5D_FILL_TIME_ALLOC)` fixes it, and
+HighFive has `AllocationTime` but no property for the fill time. This is a finding about the container
+rather than the binding, since the C API needs the same call and a checkpoint must be reproducible byte for
+byte. **Listing a dataset's filters on reading**: HighFive reports gzip and shuffle as properties, not an
+arbitrary filter's identifier, so the test that checks the filter went in uses `H5Pget_filter2` on the
+`hid_t` HighFive exposes. Counting everything, HighFive needed three C calls where the rule allowed for one
+and named four capabilities; whether the two it did not name count against HighFive is for the decision to
+say, and it is recorded here so that it can.
+
+**2. Whether the files are the same.** Byte for byte identical, compressed and uncompressed, once both
+fill on allocation: `cmp` finds no difference, `h5diff -c` no difference in contents or properties,
+`h5dump -pH` the same structure and layout. Each binding reads the other's files. `h5py` with `hdf5plugin`
+reads all four, reports the filter as 32004, the chunks as declared and `affects_results` as booleans
+(both bindings write the enumeration h5py uses, HighFive natively, the C API by eight lines). The HDF5
+command-line tools decode the LZ4 datasets only with the plugin on `HDF5_PLUGIN_PATH`, which `hdf5plugin`
+ships; without it `h5diff` exits 2 on these files. One more thing fell out: `h5diff` finds the compressed and
+the uncompressed file of the same binding identical in contents, which is the compression invariant of
+`INTEGRATION.md` observed at the file level.
+
+**3. Throughput and peak memory, indicative only.** A million agents, 44 bytes each, chunks of 16,384:
+
+| Phase | C API | HighFive |
+| --- | --- | --- |
+| Write, uncompressed | 1,084 MB/s | 1,240 MB/s |
+| Write, LZ4 | 519 MB/s | 543 MB/s |
+| Read, uncompressed | 1,108–1,712 MB/s | 1,465–1,701 MB/s |
+| Read, LZ4 | 804–819 MB/s | 746–788 MB/s |
+| Peak resident size, any phase | 15–17 MiB | 15–17 MiB |
+
+The differences are inside the run-to-run noise of a shared machine; the rule's thresholds (5 % and 10 %)
+wait for the dedicated machine. Two things do hold whatever the noise. **The chunk bounds the memory:** at
+ten million agents the files are 497 MB and 126 MB and the peak stays at 17–18 MiB, as the contract
+requires. **LZ4 costs a factor of two on fast local storage**, 519 against 1,084 MB/s, which is what the
+compression policy's arithmetic predicted and the reason `auto` exists.
+
+**4. Build and packaging cost.** HighFive 3.3.0 is on conda-forge (six platforms) and in Spack; it is not
+in Ubuntu 24.04's archive, so the Ubuntu jobs of the CI build only the C side and the conda jobs build both;
+Homebrew was not checked from where this ran. It supports HDF5 2.x, which conda-forge ships, and 1.10, which
+Ubuntu does. The HighFive implementation is 252 lines of code against 415 (blank lines and comments excluded), forty per cent fewer, over the
+rule's one third; its translation unit compiles in 4.6 s against 1.6 s, the price of a header-only template
+library, paid once per file that includes it. One C API detail the comparison surfaced: `H5Dvlen_reclaim`,
+which frees the strings HDF5 allocates on reading, was renamed `H5Treclaim` in 1.12 and the old name is
+gone from 2.x, so the C side carries a version check that HighFive hides.
+
+**What is decided and what is not.** Questions 1 and 2 are answered above, and 4 except for Homebrew;
+question 3 is not, and the rule makes the choice wait for the dedicated machine. The sandbox numbers suggest
+the two will land inside the thresholds. If they do and Homebrew has the package, HighFive passes every
+clause as written, and the two unlisted C calls are the one fact the rule did not foresee; they are left
+for the decision to weigh rather than folded into the rule after the event.
+
 ## References
 
 1. Ntiniakou T, Osborne J, Zhao J, et al. *Open Benchmarking for Cell-Based Multiscale Models: Lessons from a

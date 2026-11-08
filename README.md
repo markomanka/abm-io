@@ -30,10 +30,10 @@ simulators connect.
 
 | Path | Content |
 | --- | --- |
-| `include/abmio/`, `src/` | The library: codecs (rows, columns, delta encoding, compression) and exchange with receiver-owned memory |
+| `include/abmio/`, `src/` | The library: codecs (rows, columns, delta encoding, compression), exchange with receiver-owned memory, the LZ4 filter for HDF5 |
 | `tests/` | Unit, corruption, codec, physics and MPI tests |
 | `fuzz/` | Fuzz harnesses for every decoder |
-| `bench/` | Benchmarks and baselines |
+| `bench/` | Benchmarks and baselines; `bench/h5binding/`, the HighFive-or-C-API comparison |
 | `docs/INTEGRATION.md` | The integration contract: schema, checkpoint files, exchange, visualization files |
 | `docs/ROADMAP.md` | Milestones and how progress is tracked |
 | `docs/FINDINGS.md` | Measurements and observations behind the design |
@@ -58,11 +58,12 @@ ctest --test-dir build --output-on-failure
 With system packages instead, install the dependencies, then run the same three commands:
 
 ```bash
-sudo apt-get install cmake ninja-build pkg-config liblz4-dev libgtest-dev   # Ubuntu
-brew install cmake ninja lz4 googletest pkgconf                            # macOS (Homebrew)
+sudo apt-get install cmake ninja-build pkg-config liblz4-dev libhdf5-dev libgtest-dev   # Ubuntu
+brew install cmake ninja lz4 hdf5 googletest pkgconf                                    # macOS (Homebrew)
 ```
 
-`CONTRIBUTING.md` covers sanitizer, fuzzing and MPI builds.
+`CONTRIBUTING.md` covers sanitizer, fuzzing and MPI builds. `-DABMIO_HIGHFIVE=ON` adds the HighFive side of
+the binding comparison (`docs/RATIONALE.md`, entry 12); conda-forge and Spack package HighFive, Ubuntu does not.
 
 ## Why the design is as it is
 

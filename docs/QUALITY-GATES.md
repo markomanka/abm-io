@@ -13,6 +13,7 @@ the repository variables below.
 | Build matrix: Ubuntu 22.04 and 24.04 × GCC and Clang; macOS 15 | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
 | Build and tests with conda-forge packages (`environment.yml`): Ubuntu 24.04 and macOS 15 | `conda.yml` | GitHub-hosted | every push and PR | packaging |
 | Unit, corruption, codec and physics tests (CTest) | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
+| HDF5 tests (label `container`): the LZ4 filter, the binding comparison on the C API; with HighFive too in `conda.yml`, followed by `bench/h5binding/compare.py` | `ci.yml`, `conda.yml` | GitHub-hosted | every push and PR | checkpoints |
 | AddressSanitizer + UBSan | `ci.yml` · Sanitizers | GitHub-hosted | every push and PR | all |
 | MPI correctness with MPICH and Open MPI, 2 ranks | `ci.yml` · MPI | GitHub-hosted | every push and PR | exchange |
 | Line coverage ≥ 85% | `ci.yml` · Coverage | GitHub-hosted | every push and PR | all |
@@ -41,7 +42,7 @@ pinned to commit hashes of releases at least two weeks old; Dependabot proposes 
    and run nothing else on it.
 2. Register a self-hosted runner (Settings → Actions → Runners → New self-hosted runner) with the
    label `benchmark`. Prefer ephemeral mode (`./config.sh --ephemeral`) under a service that re-registers.
-3. Install CMake, Ninja, pkg-config, LZ4, GoogleTest and Python 3.
+3. Install CMake, Ninja, pkg-config, LZ4, HDF5, GoogleTest and Python 3.
 4. `gh variable set HAS_BENCHMARK_RUNNER --body true`
 5. Run Actions → Benchmarks → Run workflow with `record = true`, download the artifact and commit
    `bench/baseline/<host>.json`. That completes milestone 0.

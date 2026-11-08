@@ -18,6 +18,10 @@ scripts/check-policy.sh
 pipx install clang-format==23.1.3   # the version CI uses
 ```
 
+The HDF5 tests (label `container`) need `libhdf5-dev` or conda-forge's `hdf5`; with HighFive installed,
+`-DABMIO_HIGHFIVE=ON` builds and tests both sides of the binding comparison, and
+`bench/h5binding/compare.py build` runs it with `h5diff`, `h5dump`, `cmp` and `h5py`.
+
 Fuzzing needs Clang:
 
 ```

@@ -36,8 +36,12 @@ jobs:
           init-shell: bash
           cache-environment: true
       - name: Configure
-        run: cmake -S . -B build -G Ninja -DABMIO_WARNINGS_AS_ERRORS=ON
+        run: cmake -S . -B build -G Ninja -DABMIO_WARNINGS_AS_ERRORS=ON -DABMIO_HIGHFIVE=ON
       - name: Build
         run: cmake --build build
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Binding comparison (capabilities and file identity; timings are indicative here)
+        run: |
+          micromamba install -y -n abm-io h5py hdf5plugin
+          python bench/h5binding/compare.py build --agents 200000

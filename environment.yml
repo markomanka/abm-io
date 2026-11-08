@@ -13,4 +13,6 @@ dependencies:
   - ninja
   - pkg-config
   - lz4-c
+  - hdf5
+  - highfive
   - gtest
