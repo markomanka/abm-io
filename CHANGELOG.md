@@ -5,7 +5,17 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 [docs/FINDINGS.md](docs/FINDINGS.md). The plan for the numbers themselves is in
 [docs/VERSIONS.md](docs/VERSIONS.md).
 
+## Unreleased
+
+### Decisions
+
+12 is decided: the checkpoint container is written against HDF5's C API, not HighFive. The rule written
+before the comparison failed HighFive on two clauses, packaging (Homebrew has no formula) and capability
+(three C calls where one escape hatch was allowed).
+
 ## 0.2.0 — 8 November 2026
+
+DOI [10.5281/zenodo.24056736](https://doi.org/10.5281/zenodo.24056736).
 
 The model a simulator is described with, and the groundwork for the checkpoint container. No container
 yet: nothing here writes a file a simulator could restore from.

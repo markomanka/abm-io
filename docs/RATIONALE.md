@@ -299,9 +299,24 @@ lineage grows unmanageably, which would mean summarising it rather than dropping
 
 ---
 
-## 12. HighFive or HDF5's C API: decided by the rule below, not by preference
+## 12. HDF5's C API, not HighFive: decided by the rule below, not by preference
 
-**Open, with the rule written before the measurement.** The checkpoint container talks to HDF5 either
+**Decided on 10 November 2026: the C API.** The rule below was written before the measurement, and two of
+its clauses fail for HighFive, either of which would have been enough:
+
+- *Packaging (4).* The rule asks for conda-forge, Spack and Homebrew. Homebrew has no `highfive` formula:
+  `formulae.brew.sh/api/formula/highfive.json` answers 404, while `hdf5` is there.
+- *Capability (1).* The rule allows one documented escape hatch. HighFive needed three C calls: declaring
+  the filter, setting the fill time, and listing a dataset's filters.
+
+Nothing else spoke against it: the files were byte for byte identical, memory was bounded by the chunk on
+both sides, the timings differed by less than the noise on two machines, and HighFive's implementation was
+40 % shorter. Those are recorded in `docs/FINDINGS.md`. The dedicated-machine measurement the rule names was
+never made and is no longer needed, since a tie goes to the C API in any case. The container is therefore
+written against the C API, and the HighFive binding leaves the tree with the comparison harness when the
+container's own binding replaces it.
+
+**The rule, as it was written while the question was open.** The checkpoint container talks to HDF5 either
 through its C API directly or through HighFive, a header-only C++ wrapper over that API. Each side has an
 obvious argument (the wrapper is shorter to write; the C API is one dependency fewer) and neither argument
 is a measurement, so the choice is made by the comparison below, and this entry records the rule first so
