@@ -29,6 +29,7 @@ pub enum Status {
     SizeMismatch = 4,
     Corrupt = 5,
     BadSchema = 6,
+    Io = 7,
 }
 
 const MAGIC: &[u8; 4] = b"ABDZ";

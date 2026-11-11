@@ -75,6 +75,10 @@ target_link_libraries(abmio PUBLIC ${ABMIO_LZ4} PRIVATE abmio_flags)
 target_sources(abmio PRIVATE src/h5lz4_codec.cc)  # the filter's codec needs only LZ4
 if(ABMIO_HDF5)
   target_sources(abmio PRIVATE src/h5lz4.cc)  # its registration with HDF5
+  target_include_directories(abmio PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+  # The checkpoint container lives in src/container: everything there needs
+  # HDF5, and the fuzz build, which has none, compiles src/*.cc only.
+  target_sources(abmio PRIVATE src/container/h5store.cc)
   target_link_libraries(abmio PUBLIC HDF5::HDF5)
 endif()
 
@@ -103,7 +107,8 @@ if(ABMIO_BUILD_TESTS)
   gtest_discover_tests(abmio_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS unit)
   target_sources(abmio_tests PRIVATE tests/h5lz4_codec_test.cc)
   if(ABMIO_HDF5)
-    add_executable(abmio_hdf5_tests tests/h5lz4_test.cc tests/h5binding_test.cc)
+    add_executable(abmio_hdf5_tests tests/h5lz4_test.cc tests/h5binding_test.cc tests/h5store_test.cc)
+    target_include_directories(abmio_hdf5_tests PRIVATE src)
     target_link_libraries(abmio_hdf5_tests PRIVATE abmio abmio_h5binding GTest::gtest_main abmio_flags)
     gtest_discover_tests(abmio_hdf5_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS container)
   endif()
