@@ -11,7 +11,8 @@ enum class Status : uint8_t {
   kBadIndex,      // owner or slot index out of range
   kSizeMismatch,  // section sizes or reference buffer do not match
   kCorrupt,       // payload fails a consistency check
-  kBadSchema      // a schema is inconsistent (see Validate in abmio/schema.h)
+  kBadSchema,     // a schema is inconsistent (see Validate in abmio/schema.h)
+  kIo             // the file system or HDF5 refused: nothing wrong with the data
 };
 
 const char* ToString(Status s);

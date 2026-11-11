@@ -7,6 +7,12 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 
 ## Unreleased
 
+### Added
+
+- The checkpoint container's storage layer (`src/h5store.h`, internal): typed, extendable columns in HDF5
+  through the C API, appended block by block and read whole or by range, with strings and attributes.
+  Files are the same bytes for the same data.
+
 ### Decisions
 
 12 is decided: the checkpoint container is written against HDF5's C API, not HighFive. The rule written
