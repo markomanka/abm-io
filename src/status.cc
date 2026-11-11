@@ -18,6 +18,8 @@ const char* ToString(Status s) {
       return "corrupt";
     case Status::kBadSchema:
       return "bad schema";
+    case Status::kIo:
+      return "I/O failure";
   }
   return "unknown";
 }
