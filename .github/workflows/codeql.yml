@@ -30,13 +30,13 @@ jobs:
       # under it for hours in pull request #57.
       - name: Configure
         run: cmake -S . -B build -G Ninja -DABMIO_BUILD_TESTS=OFF
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: c-cpp
           build-mode: manual
           queries: security-extended
       - name: Build
         run: cmake --build build
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:c-cpp
