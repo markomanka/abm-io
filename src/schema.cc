@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "abmio/schema.h"
 
+#include <cstdio>
+#include <utility>
+
 #include <set>
 #include <string>
 #include <utility>
@@ -273,6 +276,118 @@ Status Validate(const Schema& schema, std::string* why) {
     }
   }
   return Status::kOk;
+}
+
+namespace {
+
+void Quote(const std::string& text, std::string* out) {
+  out->push_back('"');
+  for (const char c : text) {
+    switch (c) {
+      case '"':
+        *out += "\\\"";
+        break;
+      case '\\':
+        *out += "\\\\";
+        break;
+      case '\n':
+        *out += "\\n";
+        break;
+      case '\t':
+        *out += "\\t";
+        break;
+      default:
+        if (static_cast<unsigned char>(c) < 0x20) {
+          char escaped[8];
+          std::snprintf(escaped, sizeof escaped, "\\u%04x",
+                        static_cast<unsigned>(c));
+          *out += escaped;
+        } else {
+          out->push_back(c);
+        }
+    }
+  }
+  out->push_back('"');
+}
+
+void Id(TypeId id, std::string* out) {
+  if (id == kNoType) {
+    *out += "null";
+    return;
+  }
+  char hex[24];
+  std::snprintf(hex, sizeof hex, "\"0x%016llx\"",
+                static_cast<unsigned long long>(id));
+  *out += hex;
+}
+
+void Fields(const std::vector<FieldDescription>& fields, std::string* out) {
+  *out += "[";
+  for (std::size_t i = 0; i < fields.size(); ++i) {
+    const FieldDescription& f = fields[i];
+    *out += i == 0 ? "{\"name\":" : ",{\"name\":";
+    Quote(f.name, out);
+    *out += ",\"kind\":";
+    Quote(ToString(f.kind), out);
+    *out += ",\"element\":";
+    Quote(ToString(f.element), out);
+    *out += ",\"count\":" + std::to_string(f.count);
+    *out += ",\"stored\":";
+    Quote(ToString(f.stored), out);
+    *out += ",\"record_type\":";
+    Id(f.record_type, out);
+    *out += ",\"roles\":[";
+    const char* separator = "";
+    for (const auto& role : {std::make_pair(Role::kCheckpoint, "checkpoint"),
+                             std::make_pair(Role::kExchange, "exchange"),
+                             std::make_pair(Role::kExport, "export")}) {
+      if (HasRole(f.roles, role.first)) {
+        *out += separator;
+        Quote(role.second, out);
+        separator = ",";
+      }
+    }
+    *out += "],\"unit\":";
+    Quote(f.unit, out);
+    *out += ",\"term\":";
+    Quote(f.term, out);
+    *out += "}";
+  }
+  *out += "]";
+}
+
+}  // namespace
+
+std::string ToJson(const Schema& schema) {
+  std::string out = "{\"format\":\"abm-io schema\",\"version\":1,\"types\":[";
+  for (std::size_t i = 0; i < schema.types.size(); ++i) {
+    const TypeDescription& t = schema.types[i];
+    out += i == 0 ? "{\"name\":" : ",{\"name\":";
+    Quote(t.qualified_name, &out);
+    out += ",\"id\":";
+    Id(t.id, &out);
+    out += ",\"base\":";
+    Id(t.base, &out);
+    out += ",\"version\":" + std::to_string(t.version);
+    out += ",\"term\":";
+    Quote(t.term, &out);
+    out += ",\"fields\":";
+    Fields(t.fields, &out);
+    out += "}";
+  }
+  out += "],\"relations\":[";
+  for (std::size_t i = 0; i < schema.relations.size(); ++i) {
+    const RelationDescription& r = schema.relations[i];
+    out += i == 0 ? "{\"name\":" : ",{\"name\":";
+    Quote(r.name, &out);
+    out += ",\"term\":";
+    Quote(r.term, &out);
+    out += ",\"attributes\":";
+    Fields(r.attributes, &out);
+    out += "}";
+  }
+  out += "]}";
+  return out;
 }
 
 }  // namespace abmio

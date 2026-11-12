@@ -12,6 +12,12 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 - The checkpoint container's storage layer (`src/container/`, internal): typed, extendable columns in HDF5
   through the C API, appended block by block and read whole or by range, with strings and attributes.
   Files are the same bytes for the same data.
+- `CheckpointWriter` (`abmio/checkpoint.h`): objects of a described type, walked through the visitor
+  protocol a block at a time, become a table of columns; a record is a table with one row. The file carries
+  the schema of what it holds, as JSON. Not yet written, and refused with a message naming the field:
+  variable-size arrays, nested records, lists of behaviours and `StoredAs`. No manifest or temporary name
+  yet.
+- `ToJson(const Schema&)`, the form in which a file carries its schema.
 
 ### Decisions
 
