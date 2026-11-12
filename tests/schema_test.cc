@@ -472,5 +472,41 @@ TEST(Schema, InvalidRelations) {
   }
 }
 
+TEST(SchemaJson, TheSameSchemaGivesTheSameTextAndNothingBreaksIt) {
+  Schema s;
+  TypeDescription t;
+  t.qualified_name = "ns::Odd\"Name\\";
+  t.id = TypeIdOf("ns::Odd");
+  t.version = 2;
+  FieldDescription f;
+  f.name = "note";
+  f.kind = Kind::kString;
+  f.unit = "a\tb\nc\x01";
+  f.roles = Role::kCheckpoint | Role::kExport;
+  t.fields.push_back(f);
+  s.types.push_back(t);
+  RelationDescription r;
+  r.name = "adhesion";
+  s.relations.push_back(r);
+
+  const std::string json = ToJson(s);
+  EXPECT_EQ(json, ToJson(s));
+  // Quotes, backslashes and control characters are escaped, so the text stays
+  // valid JSON whatever a name or a unit contains.
+  EXPECT_NE(json.find("\"name\":\"ns::Odd\\\"Name\\\\\""), std::string::npos)
+      << json;
+  EXPECT_NE(json.find("\"unit\":\"a\\tb\\nc\\u0001\""), std::string::npos)
+      << json;
+  // No base: null. Identifiers: hexadecimal strings.
+  EXPECT_NE(json.find("\"base\":null"), std::string::npos) << json;
+  EXPECT_NE(json.find("\"id\":\"0x"), std::string::npos) << json;
+  EXPECT_NE(json.find("\"roles\":[\"checkpoint\",\"export\"]"),
+            std::string::npos)
+      << json;
+  EXPECT_NE(json.find("\"relations\":[{\"name\":\"adhesion\""),
+            std::string::npos)
+      << json;
+}
+
 }  // namespace
 }  // namespace abmio

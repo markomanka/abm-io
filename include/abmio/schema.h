@@ -210,6 +210,11 @@ struct Schema {
   const TypeDescription* Find(TypeId id) const;
 };
 
+/// The schema as JSON, the form in which a file carries it. The same schema
+/// always gives the same text. Type identifiers are written as hexadecimal
+/// strings, since a 64-bit number does not survive every JSON reader.
+std::string ToJson(const Schema& schema);
+
 // Checks a schema: unique type names and identifiers (a collision is an error),
 // existing base types without cycles, unique field names within each type and
 // its bases, consistent kinds and counts, stored types of the same category,
