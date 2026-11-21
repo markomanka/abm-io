@@ -7,52 +7,53 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 
 ## Unreleased
 
+## 0.3.0 — 21 November 2026
+
+Checkpoints: a simulation's state can be saved and restored exactly. Tables of agents and records are
+written and read a block at a time through the visitor protocol, a checkpoint becomes visible only when it
+is complete, and a resume stops when the model or what the run depended on has changed in a way that
+affects results.
+
 ### Added
 
 - The checkpoint container's storage layer (`src/container/`, internal): typed, extendable columns in HDF5
   through the C API, appended block by block and read whole or by range, with strings and attributes.
-  Files are the same bytes for the same data.
 - `CheckpointWriter` (`abmio/checkpoint.h`): objects of a described type, walked through the visitor
   protocol a block at a time, become a table of columns; a record is a table with one row. The file carries
-  the schema of what it holds, as JSON. Variable-size arrays are written as `values` and `offsets` (n + 1
-  entries from 0), as in Apache Arrow, both from `std::vector` and from a simulator's own container
-  through `FieldTraits` (`Size` and `At`). Not yet written, and refused with a message naming the field:
-  nested records, lists of behaviours and `StoredAs`. No manifest or temporary name yet.
-- `CheckpointReader` (`abmio/checkpoint.h`): reads tables and records back a block at a time, the reverse of
-  the writer, so that a round trip restores every field with the checkpoint role. It is strict, as resuming
-  must be: a table whose fields differ from the model's in name, kind, element type or count, or that holds
-  another type, is refused with the first difference named. Offsets are checked before use (from 0, never
-  decreasing, ending at the number of values), and booleans are read so that a damaged byte cannot make an
-  invalid `bool`. `FieldTraits` gains `Resize` for a simulator's own vector type. Not yet: permissive
-  reading for analysis, and the comparison of versions, digest and components that the strict resume adds.
-- The strict resume (#47): each table records its types' versions and its fields' units, and the reader
-  refuses a model in which either changed, naming it. `CheckpointReader::CheckResume` compares the
-  components a checkpoint records with those present now (decision 11): every change that affects results
-  stops the resume, all named, unless the caller accepts that component by its exact name, saying who
-  accepts it and why; accepted changes become lineage rows at the checkpoint's step, returned with the
-  lineage already carried, for every later checkpoint to write. A checkpoint without components cannot be
-  resumed. Accepting defaults for missing fields belongs to schema evolution (#13).
-- Visibility (`abmio/store.h`, `abmio/manifest.h`): `CheckpointWriter` writes `<path>.tmp` and renames it
-  in `Close` after flushing it to disk; `PrepareCheckpoint`, `CommitCheckpoint` and `FindLatest` keep a
-  directory of checkpoints in which the manifest is written last but one and the pointer `latest` last,
-  each by rename, so a reader sees the previous complete checkpoint or the new one (decision 10). The
-  manifest and pointer are JSON of a fixed shape, read by a strict parser that is fuzzed
-  (`fuzz/fuzz_manifest.cc`) and refuses names that could leave the directory.
+  the schema of what it holds, as JSON, and each table its type, its types' versions and its fields'
+  units. Variable-size arrays are written as `values` and `offsets` (n + 1 entries from 0), as in Apache
+  Arrow (decision 13), both from `std::vector` and from a simulator's own container through `FieldTraits`
+  (`Size`, `At`, `Resize`).
+- `CheckpointReader`: the reverse of the writer, a block at a time, restoring every field with the
+  checkpoint role. Offsets are checked before use (from 0, never decreasing, ending at the number of
+  values), and booleans are read so that a damaged byte cannot make an invalid `bool`.
+- The strict resume (decision 11): a table loads only if its fields match the model's in name, kind,
+  element type, count and unit, and every type of its chain has the model's version, and the failure names
+  what differs. `CheckpointReader::CheckResume` compares the components a checkpoint records with those
+  present now: every change that affects results stops the resume, all of them named, unless the caller
+  accepts that component by its exact name, saying who and why; each accepted change becomes a lineage
+  row, carried by every later checkpoint.
+- Visibility (decision 10; `abmio/store.h`, `abmio/manifest.h`): each part is written as `….tmp` and
+  renamed when closed, after flushing to disk; `PrepareCheckpoint`, `CommitCheckpoint` and `FindLatest`
+  keep a directory of checkpoints in which the manifest and then the pointer `latest` are replaced by
+  rename, so a reader sees the previous complete checkpoint or the new one, never a mixture. The manifest
+  and pointer are JSON of a fixed shape, read by a strict parser that is fuzzed (`fuzz/fuzz_manifest.cc`)
+  and refuses names that could leave the directory.
 - `ToJson(const Schema&)`, the form in which a file carries its schema.
-- The acceptance test of milestone 2 (`tests/checkpoint_acceptance_test.cc`, #73): a small simulation with
-  agents, variable-size fields, random streams, components and lineage is saved through the store in two
-  parts, restored with the strict resume and continued, and ends bit for bit in the state of the same run
-  without stopping; a checkpoint killed before its commit leaves the previous one to restore from; a
-  changed simulator stops the restore.
+- The acceptance test of milestone 2 (`tests/checkpoint_acceptance_test.cc`): a small simulation saved in
+  two parts, restored with the strict resume and continued, ends bit for bit in the state of the same run
+  without stopping; a checkpoint killed before its commit leaves the previous one to restore from.
+
+### Changed
+
+- CI follows the platform policy shared with the BioDynaMo fork (`docs/QUALITY-GATES.md`, "Platforms"):
+  Ubuntu 24.04 and 26.04 and macOS 15 on every pull request, macOS 26 weekly; Ubuntu 22.04 is no longer
+  tested.
 
 ### Fixed
 
-- Two writes of the same data could differ in bytes when they fell in different seconds: the root group,
-  and groups created on the way to a table, recorded times. Every group is now created without times, and
-  files use HDF5 1.8's object-header format whichever HDF5 builds them (HDF5 2.x already did; 1.10 started
-  from an older one), so the files are the same on every build. The test waits past a second between its
-  two writes, so a time stored anywhere fails it on every run. Seen on the Conda job on macOS 15 after
-  #68; it predated that pull request.
+- Files are the same bytes for the same data on every build: no group records times, and every HDF5
+  writes 1.8's object-header format.
 
 ### Decisions
 
@@ -62,6 +63,25 @@ variable-length type, whose elements HDF5 cannot compress and which would break 
 12 is decided: the checkpoint container is written against HDF5's C API, not HighFive. The rule written
 before the comparison failed HighFive on two clauses, packaging (Homebrew has no formula) and capability
 (three C calls where one escape hatch was allowed).
+
+10 and 11, decided earlier, are implemented: the visibility rule and the strict resume with acceptance by
+name.
+
+### Measurements
+
+None new. The layout rests on those of 0.2.0: compression, the crossover, the interrupted checkpoints
+(100 out of 100 usable with the manifest layout) and the binding comparison.
+
+### Known limitations
+
+- Nested records, lists of behaviours and `StoredAs` fields are refused with the field named (#72);
+  BioDynaMo's behaviours need them before its adapter can restore a simulation.
+- Resuming is strict only: reading an older file with defaults for missing fields is schema evolution
+  (#13).
+- Parallel checkpoints write one file per writer, but how processes agree before the commit is not yet
+  provided (#12).
+- The store relies on POSIX rename; object stores need another mechanism (`docs/STORAGE-BACKENDS.md`).
+- The benchmarks still run on shared runners, and milestone R is undecided, as in 0.2.0.
 
 ## 0.2.0 — 8 November 2026
 
