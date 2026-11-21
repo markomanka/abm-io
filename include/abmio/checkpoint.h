@@ -13,11 +13,13 @@
 // 13). Such a field bounds a block's memory by its total number of elements,
 // not by the chunk alone.
 //
-// Not yet written by this version, and refused with a message naming the
-// field rather than stored in a layout nobody agreed: nested records and lists
-// of behaviours. A field declared StoredAs a narrower type is stored at full
-// precision all the same: checkpoints restore exactly (docs/RATIONALE.md,
-// entry 14).
+// A nested record's fields take columns of their own, in a group named after
+// the record ("phase/clock/period"). A list of behaviours is a group named
+// after the field holding its type identifiers and offsets, like a vector's,
+// and one table per subtype listed by the base, named after it, holding that
+// subtype's objects in the order they appear in the lists. A field declared
+// StoredAs a narrower type is stored at full precision all the same:
+// checkpoints restore exactly (docs/RATIONALE.md, entry 14).
 //
 // The file is written as <path>.tmp and renamed to <path> in Close, after
 // being flushed to disk, so it never appears half-written; a store of
@@ -25,9 +27,12 @@
 #pragma once
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "abmio/records.h"
@@ -50,8 +55,155 @@ struct ColumnBuffer {
   std::vector<char> bytes;  ///< fixed-size fields, element after element;
                             ///< variable-size arrays, every element in turn
   std::vector<std::string> strings;  ///< string fields
-  std::vector<uint64_t> lengths;     ///< variable-size arrays, one per object
+  std::vector<uint64_t> lengths;     ///< variable-size arrays and lists, one
+                                     ///< per object
+  /// Lists of behaviours: per listed subtype, the block of its own table and
+  /// how many of its objects the block holds.
+  std::vector<std::vector<ColumnBuffer>> children;
+  std::vector<uint64_t> child_rows;
 };
+
+/// Whether a member is a nested described type (Kind::kRecord).
+template <class M>
+constexpr bool IsRecordMember() {
+  return IsDescribed<M>::value && !HasFieldTraits<M>::value;
+}
+
+/// Whether a member is a list of behaviours (Kind::kPolymorphicList).
+template <class M>
+constexpr bool IsPolymorphicList() {
+  if constexpr (HasFieldTraits<M>::value) {
+    return FieldTraits<M>::kKind == Kind::kPolymorphicList;
+  } else if constexpr (IsStdVector<M>::value) {
+    return IsDescribed<typename Unpointer<typename M::value_type>::type>::value;
+  } else {
+    return false;
+  }
+}
+
+/// The position of S in the tuple of types L.
+template <class S, class L, std::size_t I = 0>
+constexpr std::size_t IndexIn() {
+  if constexpr (I == std::tuple_size_v<L>) {
+    return I;
+  } else if constexpr (std::is_same_v<S, std::tuple_element_t<I, L>>) {
+    return I;
+  } else {
+    return IndexIn<S, L, I + 1>();
+  }
+}
+
+/// What one table holds, from its type's description: the columns in the
+/// order the visitor hands fields over, with a nested record's fields in
+/// place of the record and named by path ("inner/x"), and for each list of
+/// behaviours the tables of its subtypes, in the order of the base's
+/// Subtypes.
+struct TableSpec {
+  std::string type;  ///< the qualified name of the table's type
+  TypeId id = 0;     ///< its identifier
+  std::vector<TypeDescription> types;     ///< its chain and nested records
+  std::vector<FieldDescription> columns;  ///< checkpoint fields, flattened
+  std::vector<std::vector<TableSpec>> children;  ///< per column
+};
+
+template <class T>
+void ListSpec(TableSpec* spec, const std::string& prefix);
+template <class T>
+TableSpec SpecOf();
+
+template <class Base, std::size_t... I>
+void SubtypeSpecs(std::vector<TableSpec>* out, std::index_sequence<I...>) {
+  (out->push_back(SpecOf<std::tuple_element_t<I, SubtypesOf<Base>>>()), ...);
+}
+
+class SpecLister {
+ public:
+  SpecLister(TableSpec* spec, const std::string& prefix)
+      : spec_(spec), prefix_(prefix) {}
+
+  template <class M, class C>
+  void operator()(const Field& f, M C::* member) {
+    if (!HasRole(f.roles, Role::kCheckpoint)) {
+      return;
+    }
+    const std::string name = prefix_ + std::string(f.name);
+    if constexpr (IsRecordMember<M>()) {
+      ListSpec<M>(spec_, name + "/");
+    } else {
+      std::vector<FieldDescription> one;
+      Describer describe(&one);
+      describe(f, member);
+      one.front().name = name;
+      spec_->columns.push_back(one.front());
+      spec_->children.emplace_back();
+      if constexpr (IsPolymorphicList<M>()) {
+        using Base = typename ListOf<M>::Base;
+        CheckSubtypes<Base>();
+        SubtypeSpecs<Base>(
+            &spec_->children.back(),
+            std::make_index_sequence<std::tuple_size_v<SubtypesOf<Base>>>());
+      }
+    }
+  }
+
+ private:
+  TableSpec* spec_;
+  std::string prefix_;
+};
+
+template <class T>
+void ListSpec(TableSpec* spec, const std::string& prefix) {
+  using Base = typename TypeTraits<T>::Base;
+  if constexpr (!std::is_void_v<Base>) {
+    ListSpec<Base>(spec, prefix);
+  }
+  TypeDescription d = Describe<T>();
+  bool known = false;
+  for (const TypeDescription& t : spec->types) {
+    known = known || t.id == d.id;
+  }
+  if (!known) {
+    spec->types.push_back(d);
+  }
+  SpecLister lister(spec, prefix);
+  TypeTraits<T>::Visit(lister);
+}
+
+template <class T>
+TableSpec SpecOf() {
+  TableSpec spec;
+  spec.type = TypeTraits<T>::kName;
+  spec.id = IdOf<T>();
+  ListSpec<T>(&spec, "");
+  return spec;
+}
+
+/// A block shaped like `spec`, empty.
+inline void AllocateBlock(const TableSpec& spec,
+                          std::vector<ColumnBuffer>* block) {
+  block->assign(spec.columns.size(), ColumnBuffer());
+  for (std::size_t i = 0; i < spec.columns.size(); ++i) {
+    const std::vector<TableSpec>& kids = spec.children[i];
+    (*block)[i].children.resize(kids.size());
+    (*block)[i].child_rows.assign(kids.size(), 0);
+    for (std::size_t k = 0; k < kids.size(); ++k) {
+      AllocateBlock(kids[k], &(*block)[i].children[k]);
+    }
+  }
+}
+
+/// Empties a block, keeping its shape.
+inline void ClearBlock(std::vector<ColumnBuffer>* block) {
+  for (ColumnBuffer& c : *block) {
+    c.bytes.clear();
+    c.strings.clear();
+    c.lengths.clear();
+    for (std::size_t k = 0; k < c.children.size(); ++k) {
+      ClearBlock(&c.children[k]);
+      c.child_rows[k] = 0;
+    }
+  }
+}
 
 /// Whether a member is a variable-size array of elements (Kind::kVector).
 template <class M>
@@ -82,16 +234,56 @@ class BlockCollector {
       : columns_(columns) {}
   void NextObject() { next_ = 0; }
   bool overflowed() const { return overflowed_; }
+  /// A sentence when a list held an element that cannot be written.
+  const std::string& error() const { return error_; }
 
   template <class M>
   void operator()(const Field& f, M& member) {
+    if constexpr (IsRecordMember<M>()) {
+      // A nested record's fields take their own columns, in place of it.
+      VisitFields<M>(*this, member, Role::kCheckpoint);
+      return;
+    }
     if (next_ >= columns_->size()) {
       overflowed_ = true;
       return;
     }
     ColumnBuffer& column = (*columns_)[next_++];
-    if constexpr (std::is_same_v<M, std::string>) {
+    if constexpr (IsRecordMember<M>()) {
+      // handled above
+    } else if constexpr (std::is_same_v<M, std::string>) {
       column.strings.push_back(member);
+    } else if constexpr (IsPolymorphicList<M>()) {
+      using Subtypes = SubtypesOf<typename ListOf<M>::Base>;
+      ByteAppender append{&column.bytes};
+      uint64_t count = 0;
+      std::string why;
+      const bool ok = ForEachElement(
+          member,
+          [&](TypeId id, auto& element) {
+            using S = std::remove_reference_t<decltype(element)>;
+            constexpr std::size_t k = IndexIn<S, Subtypes>();
+            if (k >= column.children.size()) {
+              overflowed_ = true;
+              return;
+            }
+            uint64_t stored = id;
+            append(stored);
+            BlockCollector sub(&column.children[k]);
+            sub.NextObject();
+            VisitFields<S>(sub, element, Role::kCheckpoint);
+            overflowed_ = overflowed_ || sub.overflowed();
+            if (!sub.error().empty()) {
+              error_ = sub.error();
+            }
+            ++column.child_rows[k];
+            ++count;
+          },
+          &why);
+      if (!ok) {
+        error_ = std::string(f.name) + ": " + why;
+      }
+      column.lengths.push_back(count);
     } else if constexpr (IsVectorOfElements<M>()) {
       ByteAppender append{&column.bytes};
       if constexpr (HasFieldTraits<M>::value) {
@@ -121,6 +313,7 @@ class BlockCollector {
   std::vector<ColumnBuffer>* columns_;
   std::size_t next_ = 0;
   bool overflowed_ = false;
+  std::string error_;
 };
 
 /// Takes elements from one column's bytes, in the order ByteAppender put them.
@@ -159,10 +352,23 @@ class BlockScatter {
   }
   /// Whether the block and the fields failed to match, which the reader's
   /// checks are meant to make impossible.
-  bool mismatched() const { return mismatched_; }
+  bool mismatched() const {
+    bool any = mismatched_;
+    for (const auto& child : children_) {
+      any = any || child.second->mismatched();
+    }
+    return any;
+  }
+  /// A sentence when a list could not be built, as for a behaviour type this
+  /// build does not know.
+  const std::string& error() const { return error_; }
 
   template <class M>
   void operator()(const Field& f, M& member) {
+    if constexpr (IsRecordMember<M>()) {
+      VisitFields<M>(*this, member, Role::kCheckpoint);
+      return;
+    }
     if (next_ >= columns_->size()) {
       mismatched_ = true;
       return;
@@ -170,7 +376,42 @@ class BlockScatter {
     const std::size_t c = next_++;
     const ColumnBuffer& column = (*columns_)[c];
     ByteTaker take{&column.bytes, &at_[c], &mismatched_};
-    if constexpr (std::is_same_v<M, std::string>) {
+    if constexpr (IsRecordMember<M>()) {
+      // handled above
+    } else if constexpr (IsPolymorphicList<M>()) {
+      using Access = ListOf<M>;
+      using Subtypes = SubtypesOf<typename Access::Base>;
+      if (row_ >= column.lengths.size()) {
+        mismatched_ = true;
+        return;
+      }
+      if (Access::Size(member) != 0) {
+        error_ = std::string(f.name) +
+                 " already holds elements; a list is read into an empty one";
+        return;
+      }
+      const uint64_t count = column.lengths[row_];
+      for (uint64_t i = 0; i < count && error_.empty(); ++i) {
+        uint64_t id = 0;
+        take(id);
+        std::string why;
+        const bool ok = AppendElement(
+            member, id,
+            [&](auto& element) {
+              using S = std::remove_reference_t<decltype(element)>;
+              BlockScatter& sub = Child(c, IndexIn<S, Subtypes>());
+              sub.NextObject();
+              VisitFields<S>(sub, element, Role::kCheckpoint);
+              if (!sub.error().empty()) {
+                error_ = sub.error();
+              }
+            },
+            &why);
+        if (!ok) {
+          error_ = std::string(f.name) + ": " + why;
+        }
+      }
+    } else if constexpr (std::is_same_v<M, std::string>) {
       if (row_ >= column.strings.size()) {
         mismatched_ = true;
         return;
@@ -205,20 +446,36 @@ class BlockScatter {
   }
 
  private:
+  // The scatter of subtype k of the list in column c, made on first use and
+  // kept for the block, so that its rows are taken in turn.
+  BlockScatter& Child(std::size_t c, std::size_t k) {
+    std::unique_ptr<BlockScatter>& child = children_[{c, k}];
+    if (!child) {
+      static const std::vector<ColumnBuffer> kNone;
+      const ColumnBuffer& column = (*columns_)[c];
+      child = std::make_unique<BlockScatter>(
+          k < column.children.size() ? &column.children[k] : &kNone);
+    }
+    return *child;
+  }
+
   const std::vector<ColumnBuffer>* columns_;
   std::vector<std::size_t> at_;
   std::size_t row_ = 0;
   std::size_t next_ = 0;
   bool started_ = false;
   bool mismatched_ = false;
+  std::string error_;
+  std::map<std::pair<std::size_t, std::size_t>, std::unique_ptr<BlockScatter>>
+      children_;
 };
 
 /// What a table records about its type, beside the columns, so that a resume
 /// can refuse a model that changed: each type's version, base first, as
 /// "name=version;name=version", and each checkpoint field's unit, as
 /// "field=unit;field=unit", for fields that have one.
-std::string VersionsOf(const std::vector<TypeDescription>& chain);
-std::string UnitsOf(const std::vector<TypeDescription>& chain);
+std::string VersionsOf(const TableSpec& spec);
+std::string UnitsOf(const TableSpec& spec);
 
 /// The descriptions of T's base types, outermost first, then T's own.
 template <class T>
@@ -249,26 +506,25 @@ class CheckpointWriter {
   template <class T, class At>
   Status WriteTable(const std::string& path, uint64_t count, At&& at,
                     std::string* why) {
-    std::vector<TypeDescription> chain;
-    detail::DescribeChain<T>(&chain);
+    const detail::TableSpec spec = detail::SpecOf<T>();
     Table* table = nullptr;
-    Status s = BeginTable(path, chain, &table, why);
+    Status s = BeginTable(path, spec, &table, why);
     if (s != Status::kOk) {
       return s;
     }
-    std::vector<detail::ColumnBuffer> block(ColumnsOf(table));
+    std::vector<detail::ColumnBuffer> block;
+    detail::AllocateBlock(spec, &block);
     const uint64_t chunk = chunk_rows();
     for (uint64_t first = 0; first < count; first += chunk) {
       const uint64_t rows = count - first < chunk ? count - first : chunk;
-      for (detail::ColumnBuffer& column : block) {
-        column.bytes.clear();
-        column.strings.clear();
-        column.lengths.clear();
-      }
+      detail::ClearBlock(&block);
       detail::BlockCollector collect(&block);
       for (uint64_t i = 0; i < rows; ++i) {
         collect.NextObject();
         VisitFields<T>(collect, at(first + i), Role::kCheckpoint);
+      }
+      if (!collect.error().empty()) {
+        return Refuse(path, collect.error(), why);
       }
       s = AppendBlock(table, block, rows, collect.overflowed(), why);
       if (s != Status::kOk) {
@@ -293,11 +549,13 @@ class CheckpointWriter {
  private:
   struct Impl;
   struct Table;
-  Status BeginTable(const std::string& path,
-                    const std::vector<TypeDescription>& chain, Table** table,
-                    std::string* why);
-  std::size_t ColumnsOf(const Table* table) const;
+  Status BeginTable(const std::string& path, const detail::TableSpec& spec,
+                    Table** table, std::string* why);
+  Status CreateTable(const std::string& path, const detail::TableSpec& spec,
+                     std::unique_ptr<Table>* table, std::string* why);
   uint64_t chunk_rows() const;
+  Status Refuse(const std::string& path, const std::string& problem,
+                std::string* why);
   Status AppendBlock(Table* table, std::vector<detail::ColumnBuffer>& block,
                      uint64_t rows, bool overflowed, std::string* why);
   std::unique_ptr<Impl> impl_;
@@ -350,10 +608,8 @@ class CheckpointReader {
   /// that the table matches T; the count to make room for before ReadTable.
   template <class T>
   Status Rows(const std::string& path, uint64_t* rows, std::string* why) {
-    std::vector<TypeDescription> chain;
-    detail::DescribeChain<T>(&chain);
     Table* table = nullptr;
-    Status s = BeginTable(path, chain, &table, why);
+    Status s = BeginTable(path, detail::SpecOf<T>(), &table, why);
     if (s == Status::kOk) {
       *rows = RowsOf(table);
     }
@@ -367,10 +623,9 @@ class CheckpointReader {
   template <class T, class At>
   Status ReadTable(const std::string& path, uint64_t count, At&& at,
                    std::string* why) {
-    std::vector<TypeDescription> chain;
-    detail::DescribeChain<T>(&chain);
+    const detail::TableSpec spec = detail::SpecOf<T>();
     Table* table = nullptr;
-    Status s = BeginTable(path, chain, &table, why);
+    Status s = BeginTable(path, spec, &table, why);
     if (s == Status::kOk && count != RowsOf(table)) {
       s = CountDiffers(path, count, RowsOf(table), why);
     }
@@ -378,23 +633,30 @@ class CheckpointReader {
       EndTable();
       return s;
     }
-    std::vector<detail::ColumnBuffer> block(ColumnsOf(table));
+    std::vector<detail::ColumnBuffer> block;
+    detail::AllocateBlock(spec, &block);
     const uint64_t chunk = chunk_rows();
     for (uint64_t first = 0; s == Status::kOk && first < count;
          first += chunk) {
       const uint64_t rows = count - first < chunk ? count - first : chunk;
+      detail::ClearBlock(&block);
       s = ReadBlock(table, first, rows, block, why);
       if (s != Status::kOk) {
         break;
       }
       detail::BlockScatter scatter(&block);
-      for (uint64_t i = 0; i < rows; ++i) {
+      for (uint64_t i = 0; i < rows && scatter.error().empty(); ++i) {
         scatter.NextObject();
         VisitFields<T>(scatter, at(first + i), Role::kCheckpoint);
       }
-      if (scatter.mismatched()) {
+      if (!scatter.error().empty()) {
+        s = Refuse(path, scatter.error(), why);
+      } else if (scatter.mismatched()) {
         s = BlockMismatch(path, why);
       }
+    }
+    if (s == Status::kOk) {
+      s = FinishTable(table, why);
     }
     EndTable();
     return s;
@@ -422,13 +684,16 @@ class CheckpointReader {
  private:
   struct Impl;
   struct Table;
-  Status BeginTable(const std::string& path,
-                    const std::vector<TypeDescription>& chain, Table** table,
-                    std::string* why);
+  Status BeginTable(const std::string& path, const detail::TableSpec& spec,
+                    Table** table, std::string* why);
+  Status OpenTable(const std::string& path, const detail::TableSpec& spec,
+                   std::unique_ptr<Table>* table, std::string* why);
   void EndTable();
   uint64_t RowsOf(const Table* table) const;
-  std::size_t ColumnsOf(const Table* table) const;
   uint64_t chunk_rows() const;
+  Status FinishTable(Table* table, std::string* why);
+  Status Refuse(const std::string& path, const std::string& problem,
+                std::string* why);
   Status ReadBlock(Table* table, uint64_t first, uint64_t rows,
                    std::vector<detail::ColumnBuffer>& block, std::string* why);
   Status CountDiffers(const std::string& path, uint64_t count, uint64_t rows,

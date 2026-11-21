@@ -395,11 +395,12 @@ TEST(CheckpointWriter, TheFileCarriesTheSchemaOfWhatItHolds) {
   EXPECT_NE(json.find("\"roles\":[\"export\"]"), std::string::npos) << json;
 }
 
-TEST(CheckpointWriter, WhatIsNotWrittenYetIsRefusedByName) {
+TEST(CheckpointWriter, NestedRecordsAndNarrowedFieldsAreWritten) {
   std::string why;
   CheckpointWriter writer;
   ASSERT_EQ(writer.Open(Path("refused"), {}, &why), Status::kOk) << why;
 
+  // A nested record's fields become columns in a group named after it.
   std::vector<writer_test::WithRecord> records(2);
   EXPECT_EQ(writer.WriteTable<writer_test::WithRecord>(
                 "a", 2,
@@ -407,10 +408,8 @@ TEST(CheckpointWriter, WhatIsNotWrittenYetIsRefusedByName) {
                   return records[i];
                 },
                 &why),
-            Status::kBadSchema);
-  EXPECT_NE(why.find("writer_test::WithRecord.inner"), std::string::npos)
+            Status::kOk)
       << why;
-  EXPECT_NE(why.find("do not write yet"), std::string::npos) << why;
 
   // StoredAs does not narrow a checkpoint: the column keeps the member's type.
   writer_test::Narrowed narrowed;

@@ -175,6 +175,22 @@ a file that fails is refused with the field named. In Python the arrays are
 copying. The reasons for this layout rather than HDF5's variable-length type are in entry 13 of
 [RATIONALE.md](RATIONALE.md).
 
+### Nested records and lists of behaviours
+
+A field whose type is itself described is a **nested record**: its fields take columns of their own, in a
+group named after it, to any depth (`phase/clock/period`). Its type's version joins the table's
+`abmio_versions`, and its units appear in `abmio_units` under their path.
+
+A **list of behaviours** is a group named after the field holding two columns, `types`, each element's
+type identifier, and `offsets`, laid out as a variable-size field's are, so that row *i* owns
+`types[offsets[i] : offsets[i+1]]`. Beside them is one table per subtype the base lists, named after it
+(`behaviours/bdm::GrowthDivision`), holding that subtype's objects in the order they appear in the lists;
+each is a table like any other, with its own type, versions and units. A reader takes each element's
+type identifier, finds the object in turn in that subtype's table, and refuses a file whose lists refer
+to more or fewer objects than the tables hold, or to a type the model does not list. Reading into a list
+that already holds elements is refused, so that a constructor's default behaviours are not mixed with
+restored ones. In Python, `numpy.split(types, offsets[1:-1])` gives each row's list of types.
+
 ### Tables and records
 
 A checkpoint holds **tables**, many instances of a described type, and **records**, exactly one. The two are
