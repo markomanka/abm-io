@@ -9,6 +9,8 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 
 ## 0.3.0 — 21 November 2026
 
+DOI [10.5281/zenodo.24421952](https://doi.org/10.5281/zenodo.24421952).
+
 Checkpoints: a simulation's state can be saved and restored exactly. Tables of agents and records are
 written and read a block at a time through the visitor protocol, a checkpoint becomes visible only when it
 is complete, and a resume stops when the model or what the run depended on has changed in a way that
