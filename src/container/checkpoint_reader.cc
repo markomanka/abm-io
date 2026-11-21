@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "abmio/checkpoint.h"
@@ -23,6 +24,63 @@ std::string Shape(ElementType element, uint32_t count) {
     s += "[" + std::to_string(count) + "]";
   }
   return s;
+}
+
+// "a=1;b=2" as pairs, in order.
+std::vector<std::pair<std::string, std::string>> Pairs(const std::string& s) {
+  std::vector<std::pair<std::string, std::string>> out;
+  std::size_t start = 0;
+  while (start < s.size()) {
+    std::size_t end = s.find(';', start);
+    if (end == std::string::npos) {
+      end = s.size();
+    }
+    const std::string item = s.substr(start, end - start);
+    const std::size_t eq = item.find('=');
+    out.emplace_back(item.substr(0, eq),
+                     eq == std::string::npos ? "" : item.substr(eq + 1));
+    start = end + 1;
+  }
+  return out;
+}
+
+// The first difference between what the file records and what the model
+// says, as "x is A in the file and B in the model", or "" if none.
+std::string FirstDifference(const std::string& file, const std::string& model,
+                            const char* what) {
+  if (file == model) {
+    return "";
+  }
+  const auto in_file = Pairs(file);
+  const auto in_model = Pairs(model);
+  auto find = [](const std::vector<std::pair<std::string, std::string>>& v,
+                 const std::string& key) -> const std::string* {
+    for (const auto& p : v) {
+      if (p.first == key) {
+        return &p.second;
+      }
+    }
+    return nullptr;
+  };
+  for (const auto& m : in_model) {
+    const std::string* f = find(in_file, m.first);
+    if (f == nullptr) {
+      return m.first + " has " + what + " " + m.second +
+             " in the model and none in the file";
+    }
+    if (*f != m.second) {
+      return m.first + " has " + what + " " + *f + " in the file and " +
+             m.second + " in the model";
+    }
+  }
+  for (const auto& f : in_file) {
+    if (find(in_model, f.first) == nullptr) {
+      return f.first + " has " + what + " " + f.second +
+             " in the file and none in the model";
+    }
+  }
+  return std::string("the ") + what + "s are in another order: " + file +
+         " in the file, " + model + " in the model";
 }
 
 }  // namespace
@@ -119,6 +177,24 @@ Status CheckpointReader::BeginTable(const std::string& path,
   if (stored_type != type) {
     return Fail(Status::kBadSchema, why,
                 why_not + "the file holds " + stored_type + " there");
+  }
+  // The types' versions and the fields' units: the same columns under another
+  // version, or a length in other units, are not the same state.
+  std::string versions, units;
+  if (h5::ReadAttribute(group.get(), "abmio_versions", &versions, why) !=
+          Status::kOk ||
+      h5::ReadAttribute(group.get(), "abmio_units", &units, why) !=
+          Status::kOk) {
+    return Fail(Status::kCorrupt, why,
+                why_not + "it does not record its types' versions and units");
+  }
+  std::string differs =
+      FirstDifference(versions, detail::VersionsOf(chain), "version");
+  if (differs.empty()) {
+    differs = FirstDifference(units, detail::UnitsOf(chain), "unit");
+  }
+  if (!differs.empty()) {
+    return Fail(Status::kBadSchema, why, why_not + differs);
   }
 
   // Every column in the file must be a field of the model, and every field a
@@ -278,6 +354,81 @@ Status CheckpointReader::ReadBlock(Table* table, uint64_t first, uint64_t rows,
       return s;
     }
   }
+  return Status::kOk;
+}
+
+Status CheckpointReader::CheckResume(const std::vector<ComponentRecord>& now,
+                                     const ResumeAcceptance& acceptance,
+                                     std::vector<LineageRecord>* lineage,
+                                     std::string* why) {
+  std::string scratch;
+  if (why == nullptr) {
+    why = &scratch;
+  }
+  if (!acceptance.components.empty() &&
+      (acceptance.accepted_by.empty() || acceptance.reason.empty())) {
+    return Fail(Status::kBadSchema, why,
+                "accepting a changed component needs who accepts it and why");
+  }
+  SimulationRecord sim;
+  Status s = ReadRecord(kSimulationRecord, &sim, why);
+  std::vector<ComponentRecord> before;
+  std::vector<LineageRecord> carried;
+  uint64_t rows = 0;
+  if (s == Status::kOk) {
+    s = Rows<ComponentRecord>(kComponentsTable, &rows, why);
+  }
+  if (s == Status::kOk) {
+    before.resize(rows);
+    s = ReadTable<ComponentRecord>(
+        kComponentsTable, rows,
+        [&before](uint64_t i) -> ComponentRecord& { return before[i]; }, why);
+  }
+  if (s == Status::kOk) {
+    s = Rows<LineageRecord>(kLineageTable, &rows, why);
+  }
+  if (s == Status::kOk) {
+    carried.resize(rows);
+    s = ReadTable<LineageRecord>(
+        kLineageTable, rows,
+        [&carried](uint64_t i) -> LineageRecord& { return carried[i]; }, why);
+  }
+  if (s != Status::kOk) {
+    return Fail(s, why, "cannot resume from this checkpoint: " + *why);
+  }
+
+  std::vector<std::string> blocking;
+  if (BlockingDifferences(before, now, acceptance.components, &blocking)) {
+    std::string message =
+        "cannot resume: components that affect results have changed, and "
+        "none of these was accepted by name:";
+    for (const std::string& b : blocking) {
+      message += "\n  " + b;
+    }
+    return Fail(Status::kBadSchema, why, message);
+  }
+
+  auto version_of = [](const std::vector<ComponentRecord>& v,
+                       const std::string& name) {
+    for (const ComponentRecord& c : v) {
+      if (c.name == name) {
+        return c.version;
+      }
+    }
+    return std::string();
+  };
+  for (const std::string& name : DifferingComponents(before, now)) {
+    LineageRecord row;
+    row.step = sim.step;
+    row.component = name;
+    row.from_version = version_of(before, name);
+    row.to_version = version_of(now, name);
+    row.accepted_by = acceptance.accepted_by;
+    row.reason = acceptance.reason;
+    row.at = acceptance.at;
+    carried.push_back(row);
+  }
+  *lineage = std::move(carried);
   return Status::kOk;
 }
 

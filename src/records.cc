@@ -83,6 +83,18 @@ bool ComponentsDiffer(const std::vector<ComponentRecord>& before,
   return !all.empty();
 }
 
+std::vector<std::string> DifferingComponents(
+    const std::vector<ComponentRecord>& before,
+    const std::vector<ComponentRecord>& now) {
+  std::vector<std::string> names;
+  for (const Difference& d : Differences(before, now)) {
+    if (std::find(names.begin(), names.end(), d.component) == names.end()) {
+      names.push_back(d.component);
+    }
+  }
+  return names;
+}
+
 bool BlockingDifferences(const std::vector<ComponentRecord>& before,
                          const std::vector<ComponentRecord>& now,
                          const std::vector<std::string>& accepted,

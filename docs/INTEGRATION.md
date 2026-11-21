@@ -148,6 +148,12 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 /host/<simulator>      anything else the simulator needs to resume, in its own layout
 ```
 
+Each table's group carries three attributes beside its columns: `abmio_type`, the type's qualified name;
+`abmio_versions`, the version of every type in its chain, base first (`bdm::Agent=1;bdm::Cell=3`); and
+`abmio_units`, the unit of each checkpoint field that has one (`position=um;diameter=um`). The strict resume
+compares them with the running model, so the same columns under another version of a type, or a length now
+meant in other units, stop a resume with the difference named.
+
 ### Variable-size fields
 
 A field whose length differs from agent to agent, such as a list of neighbours, is a group of two datasets

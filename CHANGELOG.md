@@ -25,6 +25,13 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   decreasing, ending at the number of values), and booleans are read so that a damaged byte cannot make an
   invalid `bool`. `FieldTraits` gains `Resize` for a simulator's own vector type. Not yet: permissive
   reading for analysis, and the comparison of versions, digest and components that the strict resume adds.
+- The strict resume (#47): each table records its types' versions and its fields' units, and the reader
+  refuses a model in which either changed, naming it. `CheckpointReader::CheckResume` compares the
+  components a checkpoint records with those present now (decision 11): every change that affects results
+  stops the resume, all named, unless the caller accepts that component by its exact name, saying who
+  accepts it and why; accepted changes become lineage rows at the checkpoint's step, returned with the
+  lineage already carried, for every later checkpoint to write. A checkpoint without components cannot be
+  resumed. Accepting defaults for missing fields belongs to schema evolution (#13).
 - Visibility (`abmio/store.h`, `abmio/manifest.h`): `CheckpointWriter` writes `<path>.tmp` and renames it
   in `Close` after flushing it to disk; `PrepareCheckpoint`, `CommitCheckpoint` and `FindLatest` keep a
   directory of checkpoints in which the manifest is written last but one and the pointer `latest` last,

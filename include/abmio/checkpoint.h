@@ -28,6 +28,7 @@
 #include <type_traits>
 #include <vector>
 
+#include "abmio/records.h"
 #include "abmio/schema.h"
 #include "abmio/status.h"
 #include "abmio/visit.h"
@@ -210,6 +211,13 @@ class BlockScatter {
   bool mismatched_ = false;
 };
 
+/// What a table records about its type, beside the columns, so that a resume
+/// can refuse a model that changed: each type's version, base first, as
+/// "name=version;name=version", and each checkpoint field's unit, as
+/// "field=unit;field=unit", for fields that have one.
+std::string VersionsOf(const std::vector<TypeDescription>& chain);
+std::string UnitsOf(const std::vector<TypeDescription>& chain);
+
 /// The descriptions of T's base types, outermost first, then T's own.
 template <class T>
 void DescribeChain(std::vector<TypeDescription>* out) {
@@ -293,17 +301,31 @@ class CheckpointWriter {
   std::unique_ptr<Impl> impl_;
 };
 
+/// Where a checkpoint keeps what every simulation has (docs/INTEGRATION.md,
+/// "Checkpoint files").
+constexpr const char* kSimulationRecord = "records/abmio.Simulation";
+constexpr const char* kComponentsTable = "components";
+constexpr const char* kLineageTable = "lineage";
+
+/// The components whose changes the caller accepts for a resume, by name, and
+/// who accepts them and why (docs/RATIONALE.md, entry 11).
+struct ResumeAcceptance {
+  std::vector<std::string> components;  ///< exact names; no wildcard exists
+  std::string accepted_by;              ///< required when anything is named
+  std::string reason;                   ///< required when anything is named
+  std::string at;                       ///< ISO 8601, UTC
+};
+
 /// Reads what CheckpointWriter wrote.
 ///
 /// Strict, as resuming a simulation must be (docs/INTEGRATION.md, "Schema
 /// evolution"): a table loads only if its fields with the checkpoint role are,
-/// by name, kind, element type and count, exactly those of the model's type,
-/// and the failure names the first that differs. Reading an older file for
-/// analysis, with defaults for missing fields, is not offered yet; nor are the
-/// schema's versions, digest and components compared, which the strict resume
-/// adds. Offsets of variable-size fields are checked before use: the first is
-/// 0, none is smaller than the one before, and the last is the number of
-/// values.
+/// by name, kind, element type, count and unit, exactly those of the model's
+/// type, and every type in its chain has the model's version; the failure
+/// names what differs. CheckResume compares the components. Reading an older
+/// file for analysis, with defaults for missing fields, is not offered yet.
+/// Offsets of variable-size fields are checked before use: the first is 0, none
+/// is smaller than the one before, and the last is the number of values.
 class CheckpointReader {
  public:
   CheckpointReader();
@@ -377,6 +399,18 @@ class CheckpointReader {
     return ReadTable<T>(
         path, 1, [record](uint64_t) -> T& { return *record; }, why);
   }
+
+  /// The strict resume's check of dependencies (docs/INTEGRATION.md,
+  /// "Provenance"): compares the components the checkpoint records with
+  /// `now`. Every difference that affects results and is not accepted by name
+  /// stops the resume with kBadSchema, all of them named in `why`. Accepted
+  /// differences become lineage rows at the checkpoint's step; `lineage`
+  /// receives the checkpoint's lineage followed by them, for the caller to
+  /// write into every later checkpoint. Naming a component that did not
+  /// change records nothing.
+  Status CheckResume(const std::vector<ComponentRecord>& now,
+                     const ResumeAcceptance& acceptance,
+                     std::vector<LineageRecord>* lineage, std::string* why);
 
  private:
   struct Impl;
