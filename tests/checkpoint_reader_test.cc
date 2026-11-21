@@ -79,6 +79,10 @@ struct CellWithWideKind : Agent {
   SmallVector counts;
 };
 
+// The same fields under a new version of the type, and in other units.
+struct CellVersion2 : Cell {};
+struct CellInMillimetres : Cell {};
+
 struct Other {
   double x = 0;
 };
@@ -173,6 +177,33 @@ struct TypeTraits<reader_test::CellWithWideKind> {
     READER_TEST_CELL_FIELDS(reader_test::CellWithWideKind)
     v(Field("label"), &reader_test::CellWithWideKind::label);
     READER_TEST_CELL_VECTORS(reader_test::CellWithWideKind)
+  }
+};
+
+template <>
+struct TypeTraits<reader_test::CellVersion2> {
+  static constexpr const char* kName = "reader_test::Cell";
+  static constexpr uint32_t kVersion = 2;
+  using Base = reader_test::Agent;
+  template <class V>
+  static void Visit(V& v) {
+    TypeTraits<reader_test::Cell>::Visit(v);
+  }
+};
+
+template <>
+struct TypeTraits<reader_test::CellInMillimetres> {
+  static constexpr const char* kName = "reader_test::Cell";
+  static constexpr uint32_t kVersion = 1;
+  using Base = reader_test::Agent;
+  template <class V>
+  static void Visit(V& v) {
+    v(Field("position").Unit("mm"), &reader_test::Cell::position);
+    v(Field("alive"), &reader_test::Cell::alive);
+    v(Field("kind"), &reader_test::Cell::kind);
+    v(Field("label"), &reader_test::Cell::label);
+    READER_TEST_CELL_VECTORS(reader_test::Cell)
+    v(Field("cached").Roles(Role::kExport), &reader_test::Cell::cached);
   }
 };
 
@@ -346,6 +377,19 @@ TEST(CheckpointReader, ATableThatDiffersFromTheModelIsRefusedByName) {
   EXPECT_EQ(ReadAs(path, 8, &wide, &why), Status::kBadSchema);
   EXPECT_NE(why.find("kind"), std::string::npos) << why;
   EXPECT_NE(why.find("int32"), std::string::npos) << why;
+
+  std::vector<reader_test::CellVersion2> version2;
+  EXPECT_EQ(ReadAs(path, 8, &version2, &why), Status::kBadSchema);
+  EXPECT_NE(why.find("reader_test::Cell has version 1 in the file and 2 in "
+                     "the model"),
+            std::string::npos)
+      << why;
+
+  std::vector<reader_test::CellInMillimetres> millimetres;
+  EXPECT_EQ(ReadAs(path, 8, &millimetres, &why), Status::kBadSchema);
+  EXPECT_NE(why.find("position has unit um in the file and mm in the model"),
+            std::string::npos)
+      << why;
 
   CheckpointReader reader;
   ASSERT_EQ(reader.Open(path, {}, &why), Status::kOk) << why;

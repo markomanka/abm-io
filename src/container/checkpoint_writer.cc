@@ -41,6 +41,31 @@ Status CreateVector(hid_t parent, const FieldDescription& f,
 
 }  // namespace
 
+namespace detail {
+
+std::string VersionsOf(const std::vector<TypeDescription>& chain) {
+  std::string s;
+  for (const TypeDescription& t : chain) {
+    s += (s.empty() ? "" : ";") + t.qualified_name + "=" +
+         std::to_string(t.version);
+  }
+  return s;
+}
+
+std::string UnitsOf(const std::vector<TypeDescription>& chain) {
+  std::string s;
+  for (const TypeDescription& t : chain) {
+    for (const FieldDescription& f : t.fields) {
+      if (HasRole(f.roles, Role::kCheckpoint) && !f.unit.empty()) {
+        s += (s.empty() ? "" : ";") + f.name + "=" + f.unit;
+      }
+    }
+  }
+  return s;
+}
+
+}  // namespace detail
+
 struct CheckpointWriter::Table {
   std::string path;
   std::string type;
@@ -149,6 +174,16 @@ Status CheckpointWriter::BeginTable(const std::string& path,
     return s;
   }
   s = h5::WriteAttribute(group.get(), "abmio_type", t->type, why);
+  if (s != Status::kOk) {
+    return s;
+  }
+  s = h5::WriteAttribute(group.get(), "abmio_versions",
+                         detail::VersionsOf(chain), why);
+  if (s != Status::kOk) {
+    return s;
+  }
+  s = h5::WriteAttribute(group.get(), "abmio_units", detail::UnitsOf(chain),
+                         why);
   if (s != Status::kOk) {
     return s;
   }

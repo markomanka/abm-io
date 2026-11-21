@@ -88,6 +88,12 @@ bool BlockingDifferences(const std::vector<ComponentRecord>& before,
                          const std::vector<std::string>& accepted,
                          std::vector<std::string>* blocking);
 
+/// The names of the components that differ in a way that affects results, by
+/// the rules of ComponentsDiffer, each once, in the order first found.
+std::vector<std::string> DifferingComponents(
+    const std::vector<ComponentRecord>& before,
+    const std::vector<ComponentRecord>& now);
+
 template <>
 struct TypeTraits<LineageRecord> {
   static constexpr const char* kName = "abmio.Lineage";
