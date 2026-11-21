@@ -7,6 +7,16 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 
 ## Unreleased
 
+### Added
+
+- The walk over lists of behaviours (`abmio/visit.h`, part of #72): `ForEachElement` gives each element of a
+  polymorphic list as its own type with its type identifier, and `AppendElement` builds an element back
+  from an identifier, for `std::vector` of raw or unique pointers and for a simulator's own container
+  through `FieldTraits` (`Size`, `At`, `Append`). The base lists its concrete types as `Subtypes`; the
+  compiler checks that it is polymorphic and that the subtypes derive from it, are described and have
+  distinct identifiers. Unlisted types and null elements are refused by position. The walk is the same for
+  checkpoints and the exchange; neither uses it yet.
+
 ### Changed
 
 - The reader refuses a file that is not an abm-io checkpoint, or whose format version it does not know,
