@@ -4,10 +4,12 @@
 // contract asks of a file (docs/INTEGRATION.md, "Checkpoint files").
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdint>
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "abmio/schema.h"
@@ -189,6 +191,11 @@ TEST(H5Store, TheSameDataGivesTheSameBytes) {
   }
   std::string why;
   for (const char* name : {"same_a", "same_b"}) {
+    if (std::string(name) == "same_b") {
+      // HDF5 records times to the second: wait past one, so that a time
+      // stored anywhere in the file makes the two differ every run.
+      std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    }
     Id file;
     ASSERT_EQ(CreateFile(Path(name), &file, &why), Status::kOk) << why;
     Id group;
