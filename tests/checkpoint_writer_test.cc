@@ -412,9 +412,9 @@ TEST(CheckpointWriter, WhatIsNotWrittenYetIsRefusedByName) {
       << why;
   EXPECT_NE(why.find("do not write yet"), std::string::npos) << why;
 
+  // StoredAs does not narrow a checkpoint: the column keeps the member's type.
   writer_test::Narrowed narrowed;
-  EXPECT_EQ(writer.WriteRecord("b", narrowed, &why), Status::kBadSchema);
-  EXPECT_NE(why.find("StoredAs"), std::string::npos) << why;
+  EXPECT_EQ(writer.WriteRecord("b", narrowed, &why), Status::kOk) << why;
 
   // The same table twice.
   SimulationRecord sim;

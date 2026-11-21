@@ -112,7 +112,29 @@ Status CheckpointReader::Open(const std::string& path,
     return Fail(Status::kBadSchema, why, "chunk_rows must be at least 1");
   }
   impl_->options = options;
-  return h5::OpenFile(path, &impl_->file, why);
+  Status s = h5::OpenFile(path, &impl_->file, why);
+  if (s != Status::kOk) {
+    return s;
+  }
+  // The file says what it is and in which version of the format, and a
+  // version this abm-io does not know is refused rather than guessed at.
+  std::string format, version;
+  if (h5::ReadAttribute(impl_->file.get(), "format", &format, why) !=
+          Status::kOk ||
+      format != kCheckpointFormatName ||
+      h5::ReadAttribute(impl_->file.get(), "format_version", &version, why) !=
+          Status::kOk) {
+    impl_->file.Reset();
+    return Fail(Status::kBadHeader, why, path + " is not an abm-io checkpoint");
+  }
+  if (version != std::to_string(kCheckpointFormat)) {
+    impl_->file.Reset();
+    return Fail(Status::kBadHeader, why,
+                path + " is a checkpoint of format version " + version +
+                    "; this abm-io reads version " +
+                    std::to_string(kCheckpointFormat));
+  }
+  return Status::kOk;
 }
 
 uint64_t CheckpointReader::RowsOf(const Table* table) const {
@@ -147,12 +169,6 @@ Status CheckpointReader::BeginTable(const std::string& path,
     for (const FieldDescription& f : d.fields) {
       if (!HasRole(f.roles, Role::kCheckpoint)) {
         continue;
-      }
-      if (f.stored != ElementType::kNone && f.stored != f.element) {
-        return Fail(Status::kBadSchema, why,
-                    why_not + f.name +
-                        " is declared StoredAs a narrower type, which "
-                        "checkpoints do not read yet");
       }
       if (f.kind != Kind::kScalar && f.kind != Kind::kArray &&
           f.kind != Kind::kVector && f.kind != Kind::kString) {

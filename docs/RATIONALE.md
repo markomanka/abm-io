@@ -390,6 +390,26 @@ possible and would be recorded as any format change is.
 
 ---
 
+## 14. Checkpoints keep full precision; StoredAs narrows visualization files only
+
+**Decided** on 21 November 2026, before simulators write checkpoints outside the test suite. A field
+declared `StoredAs(float32)` for a `float64` member was refused by the checkpoint writer; it is now stored
+at the member's own precision, and the declaration applies to visualization files.
+
+**Why.** A checkpoint's one promise is an exact restore, which the acceptance test of 0.3.0 checks bit for
+bit. A narrowed field breaks it silently: the run continues from rounded values and diverges from the run
+that never stopped. Refusing such fields, as before, would have blocked every simulator type that
+declares a narrower type for its output, for a reason that has nothing to do with checkpoints.
+
+**What it costs.** Larger checkpoints for those fields, which LZ4 partly recovers.
+
+**What would change our mind.** A checkpoint size that matters more than exactness for some use, such as
+archiving a long run's history rather than restarting it. Narrowing could then be added as an explicit
+option of the writer, recorded in the file; adding it later is additive, whereas narrowing by default
+could not be taken back from files already written.
+
+---
+
 ## What this episode taught about the documents
 
 Two of the objections were misreadings, and both are our fault:
