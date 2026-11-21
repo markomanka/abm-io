@@ -17,6 +17,13 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   distinct identifiers. Unlisted types and null elements are refused by position. The walk is the same for
   checkpoints and the exchange; neither uses it yet.
 
+- Nested records and lists of behaviours in checkpoints (#72): a nested record's fields become columns in
+  a group named after it, to any depth; a list of behaviours becomes its elements' type identifiers and
+  offsets plus one table per listed subtype, written and read through `ForEachElement` and
+  `AppendElement`. The reader refuses a list referring to more or fewer objects than the subtype tables
+  hold, a type the model does not list, a nested field missing on either side, and reading into a list
+  that is not empty. With this the writer and reader refuse no kind of field.
+
 ### Changed
 
 - The reader refuses a file that is not an abm-io checkpoint, or whose format version it does not know,

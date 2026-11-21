@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
+#include <map>
+#include <memory>
 #include <set>
 #include <utility>
 #include <vector>
@@ -94,6 +97,12 @@ struct CheckpointReader::Table {
   std::vector<h5::StringColumn> strings;
   std::vector<h5::Column> offsets;
   uint64_t rows = 0;
+  // A list of behaviours keeps its type identifiers in `columns` and its
+  // offsets in `offsets`; its subtypes' tables are here, with how many rows
+  // of each have been read so far.
+  std::vector<std::vector<std::unique_ptr<Table>>> children;
+  std::vector<std::vector<uint64_t>> cursors;
+  std::vector<std::vector<TypeId>> child_ids;
 };
 
 struct CheckpointReader::Impl {
@@ -141,8 +150,27 @@ uint64_t CheckpointReader::RowsOf(const Table* table) const {
   return table->rows;
 }
 
-std::size_t CheckpointReader::ColumnsOf(const Table* table) const {
-  return table->fields.size();
+Status CheckpointReader::Refuse(const std::string& path,
+                                const std::string& problem, std::string* why) {
+  return Fail(Status::kBadSchema, why, "cannot read " + path + ": " + problem);
+}
+
+Status CheckpointReader::FinishTable(Table* table, std::string* why) {
+  for (std::size_t i = 0; i < table->children.size(); ++i) {
+    for (std::size_t k = 0; k < table->children[i].size(); ++k) {
+      Table* child = table->children[i][k].get();
+      if (table->cursors[i][k] != child->rows) {
+        return Fail(Status::kCorrupt, why,
+                    "cannot read " + table->path + ": " + child->path +
+                        " has rows that no element of the list refers to");
+      }
+      Status s = FinishTable(child, why);
+      if (s != Status::kOk) {
+        return s;
+      }
+    }
+  }
+  return Status::kOk;
 }
 
 uint64_t CheckpointReader::chunk_rows() const {
@@ -152,7 +180,7 @@ uint64_t CheckpointReader::chunk_rows() const {
 void CheckpointReader::EndTable() { impl_->table.reset(); }
 
 Status CheckpointReader::BeginTable(const std::string& path,
-                                    const std::vector<TypeDescription>& chain,
+                                    const detail::TableSpec& spec,
                                     Table** table, std::string* why) {
   std::string scratch;
   if (why == nullptr) {
@@ -161,23 +189,81 @@ Status CheckpointReader::BeginTable(const std::string& path,
   if (!impl_->file.ok()) {
     return Fail(Status::kIo, why, "the checkpoint is not open");
   }
-  const std::string& type = chain.back().qualified_name;
+  std::unique_ptr<Table> t;
+  Status s = OpenTable(path, spec, &t, why);
+  if (s != Status::kOk) {
+    return s;
+  }
+  *table = t.get();
+  impl_->table = std::move(t);
+  return Status::kOk;
+}
+
+namespace {
+
+// Refuses a member of `group` (at `where` inside the table) not in `allowed`.
+Status OnlyMembers(hid_t group, const std::string& where,
+                   const std::set<std::string>& allowed,
+                   const std::string& why_not, std::string* why) {
+  std::vector<std::string> members;
+  Status s = h5::Members(group, &members, why);
+  if (s != Status::kOk) {
+    return s;
+  }
+  for (const std::string& m : members) {
+    if (allowed.count(m) == 0) {
+      return Fail(Status::kBadSchema, why,
+                  why_not + "the file has a field " +
+                      (where.empty() ? m : where + "/" + m) +
+                      " that the model does not");
+    }
+  }
+  return Status::kOk;
+}
+
+// Checks that `offsets` are those of `values`: from 0 to its length.
+Status CheckEnds(const h5::Column& values, const h5::Column& offsets,
+                 const std::string& field, std::string* why) {
+  if (offsets.element() != ElementType::kUInt64 || offsets.count() != 1 ||
+      offsets.rows() == 0) {
+    return Fail(Status::kCorrupt, why, field + " has malformed offsets");
+  }
+  uint64_t ends[2] = {0, 0};
+  Status s = offsets.Read(0, 1, &ends[0], why);
+  if (s == Status::kOk) {
+    s = offsets.Read(offsets.rows() - 1, 1, &ends[1], why);
+  }
+  if (s != Status::kOk) {
+    return Fail(s, why, field + ": " + *why);
+  }
+  if (ends[0] != 0 || ends[1] != values.rows()) {
+    return Fail(Status::kCorrupt, why,
+                field +
+                    " has offsets that do not start at 0 and end at the number "
+                    "of values");
+  }
+  return Status::kOk;
+}
+
+}  // namespace
+
+Status CheckpointReader::OpenTable(const std::string& path,
+                                   const detail::TableSpec& spec,
+                                   std::unique_ptr<Table>* table,
+                                   std::string* why) {
+  const std::string& type = spec.type;
   const std::string why_not = "cannot read " + path + " as " + type + ": ";
   auto t = std::make_unique<Table>();
   t->path = path;
-  for (const TypeDescription& d : chain) {
-    for (const FieldDescription& f : d.fields) {
-      if (!HasRole(f.roles, Role::kCheckpoint)) {
-        continue;
-      }
-      if (f.kind != Kind::kScalar && f.kind != Kind::kArray &&
-          f.kind != Kind::kVector && f.kind != Kind::kString) {
-        return Fail(Status::kBadSchema, why,
-                    why_not + f.name + " is a " + ToString(f.kind) +
-                        ", which checkpoints do not read yet");
-      }
-      t->fields.push_back(f);
+  for (const FieldDescription& f : spec.columns) {
+    if (f.kind != Kind::kScalar && f.kind != Kind::kArray &&
+        f.kind != Kind::kVector && f.kind != Kind::kString &&
+        f.kind != Kind::kPolymorphicList) {
+      return Fail(Status::kBadSchema, why,
+                  why_not + f.name + " is a " + ToString(f.kind) +
+                      ", which checkpoints do not read");
     }
+    t->fields.push_back(f);
   }
 
   h5::Id group;
@@ -205,30 +291,51 @@ Status CheckpointReader::BeginTable(const std::string& path,
                 why_not + "it does not record its types' versions and units");
   }
   std::string differs =
-      FirstDifference(versions, detail::VersionsOf(chain), "version");
+      FirstDifference(versions, detail::VersionsOf(spec), "version");
   if (differs.empty()) {
-    differs = FirstDifference(units, detail::UnitsOf(chain), "unit");
+    differs = FirstDifference(units, detail::UnitsOf(spec), "unit");
   }
   if (!differs.empty()) {
     return Fail(Status::kBadSchema, why, why_not + differs);
   }
 
-  // Every column in the file must be a field of the model, and every field a
-  // column: resuming takes no defaults and drops nothing.
-  std::vector<std::string> members;
-  s = h5::Members(group.get(), &members, why);
-  if (s != Status::kOk) {
-    return s;
-  }
-  std::set<std::string> expected;
+  // Every name in the file must be a field of the model, at every level of
+  // nested records, and every field a column: resuming takes no defaults
+  // and drops nothing.
+  std::map<std::string, std::set<std::string>> expected;
+  expected[""];
   for (const FieldDescription& f : t->fields) {
-    expected.insert(f.name);
+    std::string dir;
+    std::size_t start = 0;
+    for (;;) {
+      const std::size_t slash = f.name.find('/', start);
+      const std::string part =
+          f.name.substr(start, slash == std::string::npos ? std::string::npos
+                                                          : slash - start);
+      expected[dir].insert(part);
+      if (slash == std::string::npos) {
+        break;
+      }
+      dir = f.name.substr(0, slash);
+      start = slash + 1;
+    }
   }
-  for (const std::string& m : members) {
-    if (expected.count(m) == 0) {
-      return Fail(
-          Status::kBadSchema, why,
-          why_not + "the file has a field " + m + " that the model does not");
+  for (const auto& level : expected) {
+    h5::Id holder;
+    hid_t at = group.get();
+    if (!level.first.empty()) {
+      if (h5::MemberOf(group.get(), level.first) != h5::Member::kGroup ||
+          h5::Group(group.get(), level.first, false, &holder, why) !=
+              Status::kOk) {
+        return Fail(Status::kBadSchema, why,
+                    why_not + "field " + level.first +
+                        " is in the model but not in the file");
+      }
+      at = holder.get();
+    }
+    s = OnlyMembers(at, level.first, level.second, why_not, why);
+    if (s != Status::kOk) {
+      return s;
     }
   }
 
@@ -236,6 +343,9 @@ Status CheckpointReader::BeginTable(const std::string& path,
   t->columns.resize(n);
   t->strings.resize(n);
   t->offsets.resize(n);
+  t->children.resize(n);
+  t->cursors.resize(n);
+  t->child_ids.resize(n);
   bool first = true;
   for (std::size_t i = 0; i < n; ++i) {
     const FieldDescription& f = t->fields[i];
@@ -246,15 +356,26 @@ Status CheckpointReader::BeginTable(const std::string& path,
                   field + " is in the model but not in the file");
     }
     uint64_t rows = 0;
-    if (f.kind == Kind::kVector) {
+    if (f.kind == Kind::kVector || f.kind == Kind::kPolymorphicList) {
+      const bool list = f.kind == Kind::kPolymorphicList;
+      const char* values_name = list ? "types" : "values";
       if (member != h5::Member::kGroup) {
         return Fail(Status::kBadSchema, why,
-                    field + " is a vector in the model but not in the file");
+                    field + (list ? " is a list" : " is a vector") +
+                        " in the model but not in the file");
       }
       h5::Id vector;
       s = h5::Group(group.get(), f.name, false, &vector, why);
+      std::set<std::string> allowed = {values_name, "offsets"};
+      for (const detail::TableSpec& child : spec.children[i]) {
+        allowed.insert(child.type);
+      }
       if (s == Status::kOk) {
-        s = h5::Column::Open(vector.get(), "values", &t->columns[i], why);
+        s = OnlyMembers(vector.get(), f.name, allowed, why_not, why);
+        if (s != Status::kOk) {
+          return s;
+        }
+        s = h5::Column::Open(vector.get(), values_name, &t->columns[i], why);
       }
       if (s == Status::kOk) {
         s = h5::Column::Open(vector.get(), "offsets", &t->offsets[i], why);
@@ -263,32 +384,37 @@ Status CheckpointReader::BeginTable(const std::string& path,
         return Fail(Status::kCorrupt, why, field + ": " + *why);
       }
       const h5::Column& values = t->columns[i];
-      const h5::Column& offsets = t->offsets[i];
-      if (values.element() != f.element || values.count() != 1) {
+      const ElementType element = list ? ElementType::kUInt64 : f.element;
+      if (values.element() != element || values.count() != 1) {
         return Fail(
             Status::kBadSchema, why,
             field + " holds " + Shape(values.element(), values.count()) +
-                " in the file and " + ToString(f.element) + " in the model");
+                " in the file and " + ToString(element) + " in the model");
       }
-      if (offsets.element() != ElementType::kUInt64 || offsets.count() != 1 ||
-          offsets.rows() == 0) {
-        return Fail(Status::kCorrupt, why, field + " has malformed offsets");
-      }
-      uint64_t ends[2] = {0, 0};
-      s = offsets.Read(0, 1, &ends[0], why);
-      if (s == Status::kOk) {
-        s = offsets.Read(offsets.rows() - 1, 1, &ends[1], why);
-      }
+      s = CheckEnds(values, t->offsets[i], field, why);
       if (s != Status::kOk) {
-        return Fail(s, why, field + ": " + *why);
+        return s;
       }
-      if (ends[0] != 0 || ends[1] != values.rows()) {
+      rows = t->offsets[i].rows() - 1;
+      // The subtypes' tables, which together hold one row per element.
+      uint64_t elements = 0;
+      for (const detail::TableSpec& child : spec.children[i]) {
+        t->children[i].emplace_back();
+        s = OpenTable(path + "/" + f.name + "/" + child.type, child,
+                      &t->children[i].back(), why);
+        if (s != Status::kOk) {
+          return s;
+        }
+        elements += t->children[i].back()->rows;
+        t->cursors[i].push_back(0);
+        t->child_ids[i].push_back(child.id);
+      }
+      if (list && elements != values.rows()) {
         return Fail(Status::kCorrupt, why,
-                    field +
-                        " has offsets that do not start at 0 and end at "
-                        "the number of values");
+                    field + " lists " + std::to_string(values.rows()) +
+                        " elements but its subtypes' tables hold " +
+                        std::to_string(elements));
       }
-      rows = offsets.rows() - 1;
     } else if (f.kind == Kind::kString) {
       s = member == h5::Member::kDataset
               ? h5::StringColumn::Open(group.get(), f.name, &t->strings[i], why)
@@ -325,8 +451,7 @@ Status CheckpointReader::BeginTable(const std::string& path,
                       std::to_string(t->rows));
     }
   }
-  *table = t.get();
-  impl_->table = std::move(t);
+  *table = std::move(t);
   return Status::kOk;
 }
 
@@ -342,7 +467,8 @@ Status CheckpointReader::ReadBlock(Table* table, uint64_t first, uint64_t rows,
     Status s = Status::kOk;
     if (f.kind == Kind::kString) {
       s = table->strings[i].Read(first, rows, &column.strings, why);
-    } else if (f.kind == Kind::kVector) {
+    } else if (f.kind == Kind::kVector || f.kind == Kind::kPolymorphicList) {
+      const bool list = f.kind == Kind::kPolymorphicList;
       std::vector<uint64_t> ends(rows + 1);
       s = table->offsets[i].Read(first, rows + 1, ends.data(), why);
       if (s != Status::kOk) {
@@ -360,8 +486,52 @@ Status CheckpointReader::ReadBlock(Table* table, uint64_t first, uint64_t rows,
         column.lengths.push_back(ends[r + 1] - ends[r]);
       }
       const uint64_t elements = ends[rows] - ends[0];
-      column.bytes.resize(elements * SizeOf(f.element));
+      const std::size_t size = list ? sizeof(uint64_t) : SizeOf(f.element);
+      column.bytes.resize(elements * size);
       s = table->columns[i].Read(ends[0], elements, column.bytes.data(), why);
+      if (s != Status::kOk || !list) {
+        if (s != Status::kOk) {
+          return s;
+        }
+        continue;
+      }
+      // How many objects of each subtype this block's elements need, taken
+      // in turn from that subtype's table.
+      const std::vector<TypeId>& ids = table->child_ids[i];
+      std::vector<uint64_t> need(ids.size(), 0);
+      for (uint64_t e = 0; e < elements; ++e) {
+        uint64_t id = 0;
+        std::memcpy(&id, column.bytes.data() + e * sizeof(uint64_t),
+                    sizeof(uint64_t));
+        std::size_t k = 0;
+        while (k < ids.size() && ids[k] != id) {
+          ++k;
+        }
+        if (k == ids.size()) {
+          return Fail(Status::kBadSchema, why,
+                      "cannot read " + table->path + ": field " + f.name +
+                          " holds an element of type " + std::to_string(id) +
+                          ", which the model does not list");
+        }
+        ++need[k];
+      }
+      for (std::size_t k = 0; k < ids.size(); ++k) {
+        Table* child = table->children[i][k].get();
+        uint64_t& cursor = table->cursors[i][k];
+        if (need[k] > child->rows - cursor) {
+          return Fail(Status::kCorrupt, why,
+                      "cannot read " + table->path + ": " + child->path +
+                          " has fewer rows than the list refers to");
+        }
+        column.child_rows[k] = need[k];
+        if (need[k] > 0) {
+          s = ReadBlock(child, cursor, need[k], column.children[k], why);
+          if (s != Status::kOk) {
+            return s;
+          }
+        }
+        cursor += need[k];
+      }
     } else {
       column.bytes.resize(rows * f.count * SizeOf(f.element));
       s = table->columns[i].Read(first, rows, column.bytes.data(), why);
