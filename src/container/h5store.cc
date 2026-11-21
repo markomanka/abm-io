@@ -137,6 +137,53 @@ Status Group(hid_t parent, const std::string& path, bool create, Id* group,
                      : Fail(Status::kIo, why, "cannot open group " + path);
 }
 
+Member MemberOf(hid_t group, const std::string& name) {
+  if (!Exists(group, name)) {
+    return Member::kNone;
+  }
+  Id object(H5Oopen(group, name.c_str(), H5P_DEFAULT), H5Oclose);
+  if (!object.ok()) {
+    return Member::kOther;
+  }
+  switch (H5Iget_type(object.get())) {
+    case H5I_DATASET:
+      return Member::kDataset;
+    case H5I_GROUP:
+      return Member::kGroup;
+    default:
+      return Member::kOther;
+  }
+}
+
+namespace {
+
+// The link information's type was renamed in 1.12; only the name is used.
+#if H5_VERSION_GE(1, 12, 0)
+using LinkInfo = H5L_info2_t;
+#else
+using LinkInfo = H5L_info_t;
+#endif
+
+herr_t CollectName(hid_t, const char* name, const LinkInfo*, void* data) {
+  static_cast<std::vector<std::string>*>(data)->emplace_back(name);
+  return 0;
+}
+
+}  // namespace
+
+Status Members(hid_t group, std::vector<std::string>* names, std::string* why) {
+  names->clear();
+  hsize_t index = 0;
+#if H5_VERSION_GE(1, 12, 0)
+  const herr_t r = H5Literate2(group, H5_INDEX_NAME, H5_ITER_INC, &index,
+                               CollectName, names);
+#else
+  const herr_t r =
+      H5Literate(group, H5_INDEX_NAME, H5_ITER_INC, &index, CollectName, names);
+#endif
+  return r < 0 ? Fail(Status::kIo, why, "cannot list a group") : Status::kOk;
+}
+
 Status WriteAttribute(hid_t object, const char* name, const std::string& value,
                       std::string* why) {
   Id type = StringType();

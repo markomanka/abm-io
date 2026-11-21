@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Writing a checkpoint (docs/INTEGRATION.md, "Checkpoint files").
+// Writing and reading a checkpoint (docs/INTEGRATION.md, "Checkpoint files").
 //
 // A checkpoint holds tables, many objects of a described type, and records,
 // exactly one; a record is a table with one row. Objects are walked through
@@ -20,6 +20,7 @@
 // Close has returned kOk.
 #pragma once
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -117,6 +118,96 @@ class BlockCollector {
   bool overflowed_ = false;
 };
 
+/// Takes elements from one column's bytes, in the order ByteAppender put them.
+struct ByteTaker {
+  const std::vector<char>* in;
+  std::size_t* at;
+  bool* short_of_bytes;
+  template <class X>
+  void operator()(X& x) {
+    if (in->size() - *at < sizeof(X)) {
+      *short_of_bytes = true;
+      return;
+    }
+    if constexpr (std::is_same_v<X, bool>) {
+      // Any byte but 0 is true, so a damaged file cannot make an invalid bool.
+      x = (*in)[*at] != 0;
+    } else {
+      std::memcpy(&x, in->data() + *at, sizeof(X));
+    }
+    *at += sizeof(X);
+  }
+};
+
+/// Hands the fields of one object after another their values from a block,
+/// the reverse of BlockCollector.
+class BlockScatter {
+ public:
+  explicit BlockScatter(const std::vector<ColumnBuffer>* columns)
+      : columns_(columns), at_(columns->size(), 0) {}
+  void NextObject() {
+    if (started_) {
+      ++row_;
+    }
+    started_ = true;
+    next_ = 0;
+  }
+  /// Whether the block and the fields failed to match, which the reader's
+  /// checks are meant to make impossible.
+  bool mismatched() const { return mismatched_; }
+
+  template <class M>
+  void operator()(const Field& f, M& member) {
+    if (next_ >= columns_->size()) {
+      mismatched_ = true;
+      return;
+    }
+    const std::size_t c = next_++;
+    const ColumnBuffer& column = (*columns_)[c];
+    ByteTaker take{&column.bytes, &at_[c], &mismatched_};
+    if constexpr (std::is_same_v<M, std::string>) {
+      if (row_ >= column.strings.size()) {
+        mismatched_ = true;
+        return;
+      }
+      member = column.strings[row_];
+    } else if constexpr (IsVectorOfElements<M>()) {
+      if (row_ >= column.lengths.size()) {
+        mismatched_ = true;
+        return;
+      }
+      const std::size_t size = static_cast<std::size_t>(column.lengths[row_]);
+      if constexpr (HasFieldTraits<M>::value) {
+        using Traits = FieldTraits<M>;
+        Traits::Resize(member, size);
+        for (std::size_t i = 0; i < size; ++i) {
+          typename Traits::Element element{};
+          take(element);
+          Traits::At(member, i) = element;
+        }
+      } else {
+        member.resize(size);
+        for (std::size_t i = 0; i < size; ++i) {
+          typename M::value_type element{};
+          take(element);
+          member[i] = element;
+        }
+      }
+    } else {
+      PerElement<ByteTaker> elements(take);
+      elements(f, member);
+    }
+  }
+
+ private:
+  const std::vector<ColumnBuffer>* columns_;
+  std::vector<std::size_t> at_;
+  std::size_t row_ = 0;
+  std::size_t next_ = 0;
+  bool started_ = false;
+  bool mismatched_ = false;
+};
+
 /// The descriptions of T's base types, outermost first, then T's own.
 template <class T>
 void DescribeChain(std::vector<TypeDescription>* out) {
@@ -197,6 +288,109 @@ class CheckpointWriter {
   uint64_t chunk_rows() const;
   Status AppendBlock(Table* table, std::vector<detail::ColumnBuffer>& block,
                      uint64_t rows, bool overflowed, std::string* why);
+  std::unique_ptr<Impl> impl_;
+};
+
+/// Reads what CheckpointWriter wrote.
+///
+/// Strict, as resuming a simulation must be (docs/INTEGRATION.md, "Schema
+/// evolution"): a table loads only if its fields with the checkpoint role are,
+/// by name, kind, element type and count, exactly those of the model's type,
+/// and the failure names the first that differs. Reading an older file for
+/// analysis, with defaults for missing fields, is not offered yet; nor are the
+/// schema's versions, digest and components compared, which the strict resume
+/// adds. Offsets of variable-size fields are checked before use: the first is
+/// 0, none is smaller than the one before, and the last is the number of
+/// values.
+class CheckpointReader {
+ public:
+  CheckpointReader();
+  ~CheckpointReader();
+  CheckpointReader(const CheckpointReader&) = delete;
+  CheckpointReader& operator=(const CheckpointReader&) = delete;
+
+  /// Opens the file for reading; of `options`, only chunk_rows counts here,
+  /// the objects read per block. `why` receives a sentence on failure, here
+  /// and below.
+  Status Open(const std::string& path, const CheckpointOptions& options,
+              std::string* why);
+
+  /// The number of objects of type T in the table at `path`, after checking
+  /// that the table matches T; the count to make room for before ReadTable.
+  template <class T>
+  Status Rows(const std::string& path, uint64_t* rows, std::string* why) {
+    std::vector<TypeDescription> chain;
+    detail::DescribeChain<T>(&chain);
+    Table* table = nullptr;
+    Status s = BeginTable(path, chain, &table, why);
+    if (s == Status::kOk) {
+      *rows = RowsOf(table);
+    }
+    EndTable();
+    return s;
+  }
+
+  /// Reads the table at `path` into `count` objects of type T, which must be
+  /// the number it holds. `at(i)` returns a reference to object i; objects are
+  /// asked for once each, in order, a block at a time.
+  template <class T, class At>
+  Status ReadTable(const std::string& path, uint64_t count, At&& at,
+                   std::string* why) {
+    std::vector<TypeDescription> chain;
+    detail::DescribeChain<T>(&chain);
+    Table* table = nullptr;
+    Status s = BeginTable(path, chain, &table, why);
+    if (s == Status::kOk && count != RowsOf(table)) {
+      s = CountDiffers(path, count, RowsOf(table), why);
+    }
+    if (s != Status::kOk) {
+      EndTable();
+      return s;
+    }
+    std::vector<detail::ColumnBuffer> block(ColumnsOf(table));
+    const uint64_t chunk = chunk_rows();
+    for (uint64_t first = 0; s == Status::kOk && first < count;
+         first += chunk) {
+      const uint64_t rows = count - first < chunk ? count - first : chunk;
+      s = ReadBlock(table, first, rows, block, why);
+      if (s != Status::kOk) {
+        break;
+      }
+      detail::BlockScatter scatter(&block);
+      for (uint64_t i = 0; i < rows; ++i) {
+        scatter.NextObject();
+        VisitFields<T>(scatter, at(first + i), Role::kCheckpoint);
+      }
+      if (scatter.mismatched()) {
+        s = BlockMismatch(path, why);
+      }
+    }
+    EndTable();
+    return s;
+  }
+
+  /// Reads the record at `path`, a table with one row, into `record`.
+  template <class T>
+  Status ReadRecord(const std::string& path, T* record, std::string* why) {
+    return ReadTable<T>(
+        path, 1, [record](uint64_t) -> T& { return *record; }, why);
+  }
+
+ private:
+  struct Impl;
+  struct Table;
+  Status BeginTable(const std::string& path,
+                    const std::vector<TypeDescription>& chain, Table** table,
+                    std::string* why);
+  void EndTable();
+  uint64_t RowsOf(const Table* table) const;
+  std::size_t ColumnsOf(const Table* table) const;
+  uint64_t chunk_rows() const;
+  Status ReadBlock(Table* table, uint64_t first, uint64_t rows,
+                   std::vector<detail::ColumnBuffer>& block, std::string* why);
+  Status CountDiffers(const std::string& path, uint64_t count, uint64_t rows,
+                      std::string* why);
+  Status BlockMismatch(const std::string& path, std::string* why);
   std::unique_ptr<Impl> impl_;
 };
 
