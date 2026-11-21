@@ -30,7 +30,24 @@ struct Cell : Agent {
 };
 
 struct WithVector {
+  uint64_t uid = 0;
   std::vector<double> values;
+  std::vector<uint64_t> neighbours;
+  std::vector<bool> flags;
+};
+
+// A simulator's own container, described through FieldTraits.
+struct SmallVector {
+  int32_t data[4] = {0, 0, 0, 0};
+  std::size_t size = 0;
+};
+
+struct WithOwnVector {
+  SmallVector counts;
+};
+
+struct WithRecord {
+  WithOwnVector inner;
 };
 
 struct Narrowed {
@@ -40,6 +57,16 @@ struct Narrowed {
 }  // namespace writer_test
 
 namespace abmio {
+
+template <>
+struct FieldTraits<writer_test::SmallVector> {
+  static constexpr Kind kKind = Kind::kVector;
+  using Element = int32_t;
+  static int32_t& At(writer_test::SmallVector& m, std::size_t i) {
+    return m.data[i];
+  }
+  static std::size_t Size(const writer_test::SmallVector& m) { return m.size; }
+};
 
 template <>
 struct TypeTraits<writer_test::Agent> {
@@ -75,7 +102,32 @@ struct TypeTraits<writer_test::WithVector> {
   using Base = void;
   template <class V>
   static void Visit(V& v) {
+    v(Field("uid").Reference(), &writer_test::WithVector::uid);
     v(Field("values"), &writer_test::WithVector::values);
+    v(Field("neighbours").Reference(), &writer_test::WithVector::neighbours);
+    v(Field("flags"), &writer_test::WithVector::flags);
+  }
+};
+
+template <>
+struct TypeTraits<writer_test::WithOwnVector> {
+  static constexpr const char* kName = "writer_test::WithOwnVector";
+  static constexpr uint32_t kVersion = 1;
+  using Base = void;
+  template <class V>
+  static void Visit(V& v) {
+    v(Field("counts"), &writer_test::WithOwnVector::counts);
+  }
+};
+
+template <>
+struct TypeTraits<writer_test::WithRecord> {
+  static constexpr const char* kName = "writer_test::WithRecord";
+  static constexpr uint32_t kVersion = 1;
+  using Base = void;
+  template <class V>
+  static void Visit(V& v) {
+    v(Field("inner"), &writer_test::WithRecord::inner);
   }
 };
 
@@ -348,15 +400,15 @@ TEST(CheckpointWriter, WhatIsNotWrittenYetIsRefusedByName) {
   CheckpointWriter writer;
   ASSERT_EQ(writer.Open(Path("refused"), {}, &why), Status::kOk) << why;
 
-  std::vector<writer_test::WithVector> vectors(2);
-  EXPECT_EQ(writer.WriteTable<writer_test::WithVector>(
+  std::vector<writer_test::WithRecord> records(2);
+  EXPECT_EQ(writer.WriteTable<writer_test::WithRecord>(
                 "a", 2,
-                [&vectors](uint64_t i) -> writer_test::WithVector& {
-                  return vectors[i];
+                [&records](uint64_t i) -> writer_test::WithRecord& {
+                  return records[i];
                 },
                 &why),
             Status::kBadSchema);
-  EXPECT_NE(why.find("writer_test::WithVector.values"), std::string::npos)
+  EXPECT_NE(why.find("writer_test::WithRecord.inner"), std::string::npos)
       << why;
   EXPECT_NE(why.find("do not write yet"), std::string::npos) << why;
 
@@ -390,6 +442,198 @@ TEST(CheckpointWriter, TheSameSimulationGivesTheSameBytes) {
   const std::string a = Bytes(Path("same_a"));
   ASSERT_FALSE(a.empty());
   EXPECT_EQ(a, Bytes(Path("same_b")));
+}
+
+std::vector<uint64_t> ReadAll(const h5::Column& c) {
+  std::vector<uint64_t> out(c.rows());
+  std::string why;
+  EXPECT_EQ(c.Read(0, c.rows(), out.data(), &why), Status::kOk) << why;
+  return out;
+}
+
+// Object i has i % 4 values, so blocks of three cross chunk boundaries with
+// empty arrays at the start, in the middle and at the end of a block.
+std::vector<writer_test::WithVector> Vectors(uint64_t n) {
+  std::vector<writer_test::WithVector> objects(n);
+  for (uint64_t i = 0; i < n; ++i) {
+    objects[i].uid = i;
+    for (uint64_t k = 0; k < i % 4; ++k) {
+      objects[i].values.push_back(static_cast<double>(10 * i + k));
+      objects[i].neighbours.push_back(100 + i + k);
+      objects[i].flags.push_back((i + k) % 2 == 0);
+    }
+  }
+  return objects;
+}
+
+Status WriteVectors(const std::string& path,
+                    std::vector<writer_test::WithVector>& objects,
+                    uint64_t chunk_rows, std::string* why) {
+  CheckpointWriter writer;
+  CheckpointOptions options;
+  options.chunk_rows = chunk_rows;
+  Status s = writer.Open(path, options, why);
+  if (s == Status::kOk) {
+    s = writer.WriteTable<writer_test::WithVector>(
+        "agents/writer_test::WithVector", objects.size(),
+        [&objects](uint64_t i) -> writer_test::WithVector& {
+          return objects[i];
+        },
+        why);
+  }
+  if (s == Status::kOk) {
+    s = writer.Close(why);
+  }
+  return s;
+}
+
+TEST(CheckpointWriter, VariableSizeArraysBecomeValuesAndOffsets) {
+  const uint64_t n = 11;
+  auto objects = Vectors(n);
+  const std::string path = Path("vectors");
+  std::string why;
+  ASSERT_EQ(WriteVectors(path, objects, 3, &why), Status::kOk) << why;
+
+  h5::Id file;
+  ASSERT_EQ(h5::OpenFile(path, &file, &why), Status::kOk) << why;
+  h5::Id group;
+  ASSERT_EQ(h5::Group(file.get(), "agents/writer_test::WithVector/values",
+                      false, &group, &why),
+            Status::kOk)
+      << why;
+  h5::Column values, offsets;
+  ASSERT_EQ(h5::Column::Open(group.get(), "values", &values, &why), Status::kOk)
+      << why;
+  ASSERT_EQ(h5::Column::Open(group.get(), "offsets", &offsets, &why),
+            Status::kOk)
+      << why;
+  EXPECT_EQ(values.element(), ElementType::kFloat64);
+  EXPECT_EQ(offsets.element(), ElementType::kUInt64);
+  ASSERT_EQ(offsets.rows(), n + 1);
+
+  const std::vector<uint64_t> ends = ReadAll(offsets);
+  std::vector<double> all(values.rows());
+  ASSERT_EQ(values.Read(0, values.rows(), all.data(), &why), Status::kOk)
+      << why;
+  EXPECT_EQ(ends.front(), 0u);
+  EXPECT_EQ(ends.back(), values.rows());
+  for (uint64_t i = 0; i < n; ++i) {
+    std::vector<double> got(
+        all.begin() + static_cast<std::ptrdiff_t>(ends[i]),
+        all.begin() + static_cast<std::ptrdiff_t>(ends[i + 1]));
+    EXPECT_EQ(got, objects[i].values) << "object " << i;
+  }
+
+  // Agent identifiers and booleans take the same layout.
+  h5::Id neighbours;
+  ASSERT_EQ(h5::Group(file.get(), "agents/writer_test::WithVector/neighbours",
+                      false, &neighbours, &why),
+            Status::kOk);
+  h5::Column ids, id_offsets;
+  ASSERT_EQ(h5::Column::Open(neighbours.get(), "values", &ids, &why),
+            Status::kOk);
+  ASSERT_EQ(h5::Column::Open(neighbours.get(), "offsets", &id_offsets, &why),
+            Status::kOk);
+  EXPECT_EQ(ReadAll(id_offsets), ends);
+  const std::vector<uint64_t> id_values = ReadAll(ids);
+  for (uint64_t i = 0; i < n; ++i) {
+    for (uint64_t k = ends[i]; k < ends[i + 1]; ++k) {
+      EXPECT_EQ(id_values[k], objects[i].neighbours[k - ends[i]]);
+    }
+  }
+  h5::Id flags;
+  ASSERT_EQ(h5::Group(file.get(), "agents/writer_test::WithVector/flags", false,
+                      &flags, &why),
+            Status::kOk);
+  h5::Column flag_values;
+  ASSERT_EQ(h5::Column::Open(flags.get(), "values", &flag_values, &why),
+            Status::kOk);
+  EXPECT_EQ(flag_values.element(), ElementType::kBool);
+  EXPECT_EQ(flag_values.rows(), values.rows());
+}
+
+TEST(CheckpointWriter, TheChunkSizeDoesNotChangeWhatVectorsHold) {
+  auto objects = Vectors(23);
+  std::string why;
+  for (uint64_t chunk : {1u, 4u, 64u}) {
+    const std::string path = Path("vectors_chunk" + std::to_string(chunk));
+    ASSERT_EQ(WriteVectors(path, objects, chunk, &why), Status::kOk) << why;
+    h5::Id file;
+    ASSERT_EQ(h5::OpenFile(path, &file, &why), Status::kOk) << why;
+    h5::Id group;
+    ASSERT_EQ(h5::Group(file.get(), "agents/writer_test::WithVector/neighbours",
+                        false, &group, &why),
+              Status::kOk);
+    h5::Column values, offsets;
+    ASSERT_EQ(h5::Column::Open(group.get(), "values", &values, &why),
+              Status::kOk);
+    ASSERT_EQ(h5::Column::Open(group.get(), "offsets", &offsets, &why),
+              Status::kOk);
+    std::vector<uint64_t> expected_values, expected_offsets = {0};
+    for (const auto& o : objects) {
+      expected_values.insert(expected_values.end(), o.neighbours.begin(),
+                             o.neighbours.end());
+      expected_offsets.push_back(expected_values.size());
+    }
+    EXPECT_EQ(ReadAll(values), expected_values) << "chunk " << chunk;
+    EXPECT_EQ(ReadAll(offsets), expected_offsets) << "chunk " << chunk;
+  }
+}
+
+TEST(CheckpointWriter, AnEmptyTableHasOneOffset) {
+  std::vector<writer_test::WithVector> none;
+  const std::string path = Path("vectors_empty");
+  std::string why;
+  ASSERT_EQ(WriteVectors(path, none, 8, &why), Status::kOk) << why;
+  h5::Id file;
+  ASSERT_EQ(h5::OpenFile(path, &file, &why), Status::kOk) << why;
+  h5::Id group;
+  ASSERT_EQ(h5::Group(file.get(), "agents/writer_test::WithVector/values",
+                      false, &group, &why),
+            Status::kOk);
+  h5::Column values, offsets;
+  ASSERT_EQ(h5::Column::Open(group.get(), "values", &values, &why),
+            Status::kOk);
+  ASSERT_EQ(h5::Column::Open(group.get(), "offsets", &offsets, &why),
+            Status::kOk);
+  EXPECT_EQ(values.rows(), 0u);
+  EXPECT_EQ(ReadAll(offsets), std::vector<uint64_t>{0});
+}
+
+TEST(CheckpointWriter, ASimulatorsOwnVectorGoesThroughFieldTraits) {
+  std::vector<writer_test::WithOwnVector> objects(3);
+  objects[0].counts.size = 2;
+  objects[0].counts.data[0] = 7;
+  objects[0].counts.data[1] = -1;
+  objects[2].counts.size = 1;
+  objects[2].counts.data[0] = 42;
+  const std::string path = Path("vectors_traits");
+  std::string why;
+  CheckpointWriter writer;
+  ASSERT_EQ(writer.Open(path, {}, &why), Status::kOk) << why;
+  ASSERT_EQ(writer.WriteTable<writer_test::WithOwnVector>(
+                "agents/own", objects.size(),
+                [&objects](uint64_t i) -> writer_test::WithOwnVector& {
+                  return objects[i];
+                },
+                &why),
+            Status::kOk)
+      << why;
+  ASSERT_EQ(writer.Close(&why), Status::kOk) << why;
+  h5::Id file;
+  ASSERT_EQ(h5::OpenFile(path, &file, &why), Status::kOk) << why;
+  h5::Id group;
+  ASSERT_EQ(h5::Group(file.get(), "agents/own/counts", false, &group, &why),
+            Status::kOk);
+  h5::Column values, offsets;
+  ASSERT_EQ(h5::Column::Open(group.get(), "values", &values, &why),
+            Status::kOk);
+  ASSERT_EQ(h5::Column::Open(group.get(), "offsets", &offsets, &why),
+            Status::kOk);
+  std::vector<int32_t> got(values.rows());
+  ASSERT_EQ(values.Read(0, values.rows(), got.data(), &why), Status::kOk);
+  EXPECT_EQ(got, (std::vector<int32_t>{7, -1, 42}));
+  EXPECT_EQ(ReadAll(offsets), (std::vector<uint64_t>{0, 2, 2, 3}));
 }
 
 }  // namespace

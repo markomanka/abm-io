@@ -241,7 +241,9 @@ struct TypeTraits;
 //   elements static constexpr bool kReference;     // optional, kScalar only:
 //   an agent identifier
 // and, for data visitors such as the exchange:
-//   static Element& At(M& m, std::size_t i);           // kScalar and kArray
+//   static Element& At(M& m, std::size_t i);           // kScalar, kArray and
+//                                                      // kVector
+//   static std::size_t Size(const M& m);               // kVector only
 //   static uint64_t Load(const M& m);                  // references, instead
 //   of At static void Store(M& m, uint64_t id);              // references;
 //   Store(m, Load(m))

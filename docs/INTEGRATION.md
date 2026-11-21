@@ -139,6 +139,7 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 /schema                the type descriptions, as JSON
 /agents/<type>/uid     one entry per agent of that type
 /agents/<type>/<field> one dataset per field, column by column, chunked and compressed
+/agents/<type>/<field>/values, /offsets  a variable-size field: its elements, and where each row's begin
 /environment/<name>    continuum fields (for example substance concentrations): values, origin, spacing, unit
 /records/<type>/<field>  one dataset per field, with one row, for the types below
 /random                a table: one row per random stream (generator key and counter)
@@ -146,6 +147,19 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 /lineage               a table: every accepted discontinuity, carried by every later checkpoint
 /host/<simulator>      anything else the simulator needs to resume, in its own layout
 ```
+
+### Variable-size fields
+
+A field whose length differs from agent to agent, such as a list of neighbours, is a group of two datasets
+named after the field, in the layout of Apache Arrow's lists. `values` holds every agent's elements one after
+another, in the field's element type; `offsets` holds unsigned 64-bit integers, one more than there are rows,
+starting at 0, so that row *i* owns `values[offsets[i] : offsets[i+1]]` and an empty array is two equal
+offsets in a row. Both are chunked and compressed like any other column. A reader checks the offsets before
+using them: the first is 0, none is smaller than the one before, and the last equals the length of `values`;
+a file that fails is refused with the field named. In Python the arrays are
+`numpy.split(values, offsets[1:-1])`, and `pyarrow.ListArray.from_arrays(offsets, values)` wraps them without
+copying. The reasons for this layout rather than HDF5's variable-length type are in entry 13 of
+[RATIONALE.md](RATIONALE.md).
 
 ### Tables and records
 

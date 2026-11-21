@@ -361,6 +361,33 @@ which they are running.
 a C API implementation that grows past the point where the wrapper's brevity would have paid: both are
 visible in the repository, and the comparison can be rerun.
 
+
+---
+
+## 13. Variable-size fields: values and offsets, not HDF5's variable-length type
+
+**Decided** in November 2026, before the reader is written, since the reader is built on whatever the file
+holds. Three layouts were weighed for fields whose length differs per agent (neighbour lists, concentrations):
+
+- **HDF5's variable-length type**, as strings are stored: one dataset per field and the simplest writer, but
+  HDF5 compresses only the pointers; the elements sit in a global heap outside the chunks, uncompressed, which
+  breaks the chunk-bounded writing of `INTEGRATION.md` and leaves a large checkpoint mostly uncompressed. It
+  would also trust HDF5's handling of variable-length data with files abm-io is meant to treat as untrusted.
+- **Values and n end offsets**: every dataset of a type keeps n rows, but the convention matches no format a
+  reader is likely to know.
+- **Values and n + 1 offsets starting at 0**, as Apache Arrow and Parquet do and as VTKHDF does for cells:
+  ordinary columns, compressed and appended chunk by chunk like the others; validated by one short rule
+  (starts at 0, never decreases, ends at the length of `values`); read by NumPy and wrapped by `pyarrow`
+  without copying.
+
+The third was chosen. It costs a group of two datasets per such field and one row more in `offsets` than in
+the other columns, both written down in `INTEGRATION.md`. The second would have been defensible; the first
+not, at the sizes abm-io is for.
+
+**What would change our mind.** A consumer that matters and reads HDF5's variable-length type but not two
+plain datasets; none is known. The layout is versioned with the file format, so a change before 1.0.0 is
+possible and would be recorded as any format change is.
+
 ---
 
 ## What this episode taught about the documents

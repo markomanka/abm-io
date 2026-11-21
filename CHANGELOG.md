@@ -14,12 +14,16 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   Files are the same bytes for the same data.
 - `CheckpointWriter` (`abmio/checkpoint.h`): objects of a described type, walked through the visitor
   protocol a block at a time, become a table of columns; a record is a table with one row. The file carries
-  the schema of what it holds, as JSON. Not yet written, and refused with a message naming the field:
-  variable-size arrays, nested records, lists of behaviours and `StoredAs`. No manifest or temporary name
-  yet.
+  the schema of what it holds, as JSON. Variable-size arrays are written as `values` and `offsets` (n + 1
+  entries from 0), as in Apache Arrow, both from `std::vector` and from a simulator's own container
+  through `FieldTraits` (`Size` and `At`). Not yet written, and refused with a message naming the field:
+  nested records, lists of behaviours and `StoredAs`. No manifest or temporary name yet.
 - `ToJson(const Schema&)`, the form in which a file carries its schema.
 
 ### Decisions
+
+13 is decided: variable-size fields are stored as values and offsets, as Apache Arrow does, not with HDF5's
+variable-length type, whose elements HDF5 cannot compress and which would break chunk-bounded writing.
 
 12 is decided: the checkpoint container is written against HDF5's C API, not HighFive. The rule written
 before the comparison failed HighFive on two clauses, packaging (Homebrew has no formula) and capability
