@@ -68,7 +68,7 @@ endif()
 
 # --- library
 add_library(abmio src/exchange.cc src/codec.cc src/generated.cc src/records.cc src/schema.cc
-                  src/status.cc)
+                  src/status.cc src/manifest.cc src/durable.cc src/store.cc)
 add_library(abmio::abmio ALIAS abmio)
 target_include_directories(abmio PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(abmio PUBLIC ${ABMIO_LZ4} PRIVATE abmio_flags)
@@ -101,14 +101,16 @@ if(ABMIO_BUILD_TESTS)
   find_package(GTest REQUIRED)
   include(GoogleTest)
   add_executable(abmio_tests tests/exchange_test.cc tests/codec_test.cc tests/schema_test.cc
-                           tests/visit_test.cc tests/traits_test.cc tests/records_test.cc)
+                           tests/visit_test.cc tests/traits_test.cc tests/records_test.cc
+                           tests/manifest_test.cc)
   target_include_directories(abmio_tests PRIVATE tests)
   target_link_libraries(abmio_tests PRIVATE abmio GTest::gtest_main abmio_flags)
   gtest_discover_tests(abmio_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS unit)
   target_sources(abmio_tests PRIVATE tests/h5lz4_codec_test.cc)
   if(ABMIO_HDF5)
     add_executable(abmio_hdf5_tests tests/h5lz4_test.cc tests/h5binding_test.cc tests/h5store_test.cc
-                                    tests/checkpoint_writer_test.cc tests/checkpoint_reader_test.cc)
+                                    tests/checkpoint_writer_test.cc tests/checkpoint_reader_test.cc
+                                    tests/store_test.cc)
     target_include_directories(abmio_hdf5_tests PRIVATE src)
     target_link_libraries(abmio_hdf5_tests PRIVATE abmio abmio_h5binding GTest::gtest_main abmio_flags)
     gtest_discover_tests(abmio_hdf5_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS container)
@@ -199,7 +201,7 @@ endif()
 
 # --- fuzz harnesses
 if(ABMIO_BUILD_FUZZERS)
-  foreach(f fuzz_unpack fuzz_delta fuzz_h5lz4)
+  foreach(f fuzz_unpack fuzz_delta fuzz_h5lz4 fuzz_manifest)
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       add_executable(${f} fuzz/${f}.cc)
       target_link_options(${f} PRIVATE -fsanitize=fuzzer)

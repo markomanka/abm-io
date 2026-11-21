@@ -25,6 +25,12 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   decreasing, ending at the number of values), and booleans are read so that a damaged byte cannot make an
   invalid `bool`. `FieldTraits` gains `Resize` for a simulator's own vector type. Not yet: permissive
   reading for analysis, and the comparison of versions, digest and components that the strict resume adds.
+- Visibility (`abmio/store.h`, `abmio/manifest.h`): `CheckpointWriter` writes `<path>.tmp` and renames it
+  in `Close` after flushing it to disk; `PrepareCheckpoint`, `CommitCheckpoint` and `FindLatest` keep a
+  directory of checkpoints in which the manifest is written last but one and the pointer `latest` last,
+  each by rename, so a reader sees the previous complete checkpoint or the new one (decision 10). The
+  manifest and pointer are JSON of a fixed shape, read by a strict parser that is fuzzed
+  (`fuzz/fuzz_manifest.cc`) and refuses names that could leave the directory.
 - `ToJson(const Schema&)`, the form in which a file carries its schema.
 
 ### Decisions
