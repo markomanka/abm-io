@@ -87,6 +87,10 @@ struct Other {
   double x = 0;
 };
 
+struct Narrowed {
+  double x = 0;
+};
+
 }  // namespace reader_test
 
 namespace abmio {
@@ -204,6 +208,17 @@ struct TypeTraits<reader_test::CellInMillimetres> {
     v(Field("label"), &reader_test::Cell::label);
     READER_TEST_CELL_VECTORS(reader_test::Cell)
     v(Field("cached").Roles(Role::kExport), &reader_test::Cell::cached);
+  }
+};
+
+template <>
+struct TypeTraits<reader_test::Narrowed> {
+  static constexpr const char* kName = "reader_test::Narrowed";
+  static constexpr uint32_t kVersion = 1;
+  using Base = void;
+  template <class V>
+  static void Visit(V& v) {
+    v(Field("x").StoredAs(ElementType::kFloat32), &reader_test::Narrowed::x);
   }
 };
 
@@ -453,6 +468,77 @@ TEST(CheckpointReader, NothingIsReadBeforeOpen) {
   EXPECT_EQ(reader.ReadRecord("records/abmio.Simulation", &sim, &why),
             Status::kIo);
   EXPECT_EQ(reader.Open(Path("absent_file"), {}, &why), Status::kIo);
+}
+
+TEST(CheckpointReader, StoredAsDoesNotNarrowACheckpoint) {
+  const std::string path = Path("narrowed");
+  reader_test::Narrowed written;
+  written.x = 0.1;  // not representable in 32 bits
+  std::string why;
+  {
+    CheckpointWriter writer;
+    ASSERT_EQ(writer.Open(path, {}, &why), Status::kOk) << why;
+    ASSERT_EQ(writer.WriteRecord("records/n", written, &why), Status::kOk)
+        << why;
+    ASSERT_EQ(writer.Close(&why), Status::kOk) << why;
+  }
+  CheckpointReader reader;
+  ASSERT_EQ(reader.Open(path, {}, &why), Status::kOk) << why;
+  reader_test::Narrowed back;
+  ASSERT_EQ(reader.ReadRecord("records/n", &back, &why), Status::kOk) << why;
+  EXPECT_EQ(back.x, 0.1) << "bit for bit, not rounded to float";
+}
+
+// Rewrites a string attribute on the file's root, as another writer would.
+void SetRootAttribute(const std::string& path, const char* name,
+                      const char* value) {
+  hid_t file = H5Fopen(path.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+  ASSERT_GE(file, 0);
+  if (H5Aexists(file, name) > 0) {
+    H5Adelete(file, name);
+  }
+  hid_t type = H5Tcopy(H5T_C_S1);
+  H5Tset_size(type, H5T_VARIABLE);
+  hid_t space = H5Screate(H5S_SCALAR);
+  hid_t attr = H5Acreate2(file, name, type, space, H5P_DEFAULT, H5P_DEFAULT);
+  ASSERT_GE(attr, 0);
+  EXPECT_GE(H5Awrite(attr, type, &value), 0);
+  H5Aclose(attr);
+  H5Sclose(space);
+  H5Tclose(type);
+  H5Fclose(file);
+}
+
+TEST(CheckpointReader, AnUnknownFormatVersionIsRefused) {
+  auto cells = Cells(3);
+  const std::string path = Path("format");
+  std::string why;
+  ASSERT_EQ(Write(path, cells, 8, &why), Status::kOk) << why;
+  SetRootAttribute(path, "format_version", "2");
+  CheckpointReader reader;
+  EXPECT_EQ(reader.Open(path, {}, &why), Status::kBadHeader);
+  EXPECT_NE(why.find("format version 2"), std::string::npos) << why;
+  SimulationRecord sim;
+  EXPECT_EQ(reader.ReadRecord("records/abmio.Simulation", &sim, &why),
+            Status::kIo)
+      << "a refused file stays closed";
+}
+
+TEST(CheckpointReader, AFileThatIsNotACheckpointIsRefused) {
+  const std::string path = Path("plain");
+  hid_t file = H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+  ASSERT_GE(file, 0);
+  H5Fclose(file);
+  CheckpointReader reader;
+  std::string why;
+  EXPECT_EQ(reader.Open(path, {}, &why), Status::kBadHeader);
+  EXPECT_NE(why.find("not an abm-io checkpoint"), std::string::npos) << why;
+
+  auto cells = Cells(2);
+  const std::string other = Path("other_format");
+  ASSERT_EQ(Write(other, cells, 8, &why), Status::kOk) << why;
+  SetRootAttribute(other, "format", "something else");
+  EXPECT_EQ(reader.Open(other, {}, &why), Status::kBadHeader);
 }
 
 }  // namespace

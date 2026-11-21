@@ -109,11 +109,13 @@ Status CheckpointWriter::Open(const std::string& path,
   if (s != Status::kOk) {
     return s;
   }
-  s = h5::WriteAttribute(impl_->file.get(), "format", "abm-io checkpoint", why);
+  s = h5::WriteAttribute(impl_->file.get(), "format", kCheckpointFormatName,
+                         why);
   if (s != Status::kOk) {
     return s;
   }
-  return h5::WriteAttribute(impl_->file.get(), "format_version", "1", why);
+  return h5::WriteAttribute(impl_->file.get(), "format_version",
+                            std::to_string(kCheckpointFormat), why);
 }
 
 uint64_t CheckpointWriter::chunk_rows() const {
@@ -151,13 +153,8 @@ Status CheckpointWriter::BeginTable(const std::string& path,
         return Fail(Status::kBadSchema, why,
                     where + " repeats the name of another field");
       }
-      if (f.stored != ElementType::kNone && f.stored != f.element) {
-        return Fail(Status::kBadSchema, why,
-                    where +
-                        " is declared StoredAs a narrower type, which "
-                        "checkpoints do not "
-                        "write yet");
-      }
+      // StoredAs is ignored: checkpoints keep full precision, so that a
+      // restore is exact (docs/RATIONALE.md, entry 14).
       if (f.kind != Kind::kScalar && f.kind != Kind::kArray &&
           f.kind != Kind::kVector && f.kind != Kind::kString) {
         return Fail(Status::kBadSchema, why,

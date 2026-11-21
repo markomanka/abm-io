@@ -152,7 +152,8 @@ struct Field {
     return *this;
   }
   // Stores the field with a narrower element type of the same category, such as
-  // float32 for a float64 member. abm-io never converts units, only precision.
+  // float32 for a float64 member, in visualization files; checkpoints and the
+  // exchange keep full precision. abm-io never converts units, only precision.
   constexpr Field& StoredAs(ElementType t) {
     stored = t;
     return *this;

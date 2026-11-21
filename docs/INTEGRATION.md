@@ -66,7 +66,7 @@ Every agent or behaviour type has a **type description**:
 | Name | Unique within the type, including its base types |
 | Kind | Scalar, fixed-size array (such as a 3D position), variable-size array, string, nested record, or list of polymorphic records (such as behaviours) |
 | Element type and count | For example `float64 × 3`: integers, floating point, booleans, characters, or agent identifiers for references to other agents |
-| Stored as | Optional narrower element type of the same category for files and streams, such as `float32` for a `float64` member; precision only, never units |
+| Stored as | Optional narrower element type of the same category for visualization files, such as `float32` for a `float64` member; precision only, never units. Checkpoints and the exchange keep full precision (RATIONALE.md, entry 14) |
 | Unit | Optional, for example `um` or `min`; carried into files unchanged, never converted, checked for consistency when loading, and used for MultiCellDS mapping |
 | Roles | Any combination of *checkpoint*, *exchange* and *export*; a field without roles is never stored or sent |
 | Ontology term | Optional, for example from the Cell Ontology or the Relation Ontology; types and relations carry one too |
@@ -148,7 +148,9 @@ Checkpoints are HDF5 files, readable without abm-io by any HDF5 tool that has th
 /host/<simulator>      anything else the simulator needs to resume, in its own layout
 ```
 
-Each table's group carries three attributes beside its columns: `abmio_type`, the type's qualified name;
+The file's root carries two attributes, `format` (`abm-io checkpoint`) and `format_version` (now `1`,
+raised whenever this layout changes); a reader refuses a file that lacks them or has a version it does
+not know. Each table's group carries three attributes beside its columns: `abmio_type`, the type's qualified name;
 `abmio_versions`, the version of every type in its chain, base first (`bdm::Agent=1;bdm::Cell=3`); and
 `abmio_units`, the unit of each checkpoint field that has one (`position=um;diameter=um`). The strict resume
 compares them with the running model, so the same columns under another version of a type, or a length now

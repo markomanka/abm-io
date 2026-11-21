@@ -6,8 +6,8 @@
 // fields, records and lists, which travel separately (behaviours, for
 // instance, as records of their own); ElementSizes gives the matching sizes
 // from the type's description, without an object. Only roles select fields:
-// units are never converted, and a narrower stored type applies to files, not
-// to the exchange.
+// units are never converted, and a narrower stored type applies to
+// visualization files only, never to checkpoints or the exchange.
 #pragma once
 #include <cstddef>
 #include <cstdint>

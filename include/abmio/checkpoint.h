@@ -14,8 +14,10 @@
 // not by the chunk alone.
 //
 // Not yet written by this version, and refused with a message naming the
-// field rather than stored in a layout nobody agreed: nested records, lists of
-// behaviours, and fields declared StoredAs a narrower type.
+// field rather than stored in a layout nobody agreed: nested records and lists
+// of behaviours. A field declared StoredAs a narrower type is stored at full
+// precision all the same: checkpoints restore exactly (docs/RATIONALE.md,
+// entry 14).
 //
 // The file is written as <path>.tmp and renamed to <path> in Close, after
 // being flushed to disk, so it never appears half-written; a store of
@@ -300,6 +302,11 @@ class CheckpointWriter {
                      uint64_t rows, bool overflowed, std::string* why);
   std::unique_ptr<Impl> impl_;
 };
+
+/// What the file's root says it is. The version is raised whenever the layout
+/// changes, and a reader refuses a version it does not know.
+constexpr const char* kCheckpointFormatName = "abm-io checkpoint";
+constexpr uint32_t kCheckpointFormat = 1;
 
 /// Where a checkpoint keeps what every simulation has (docs/INTEGRATION.md,
 /// "Checkpoint files").

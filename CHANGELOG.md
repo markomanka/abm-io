@@ -7,6 +7,19 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 
 ## Unreleased
 
+### Changed
+
+- The reader refuses a file that is not an abm-io checkpoint, or whose format version it does not know,
+  naming the version, instead of reading it as if it were the current one. The writer has recorded both
+  since 0.3.0.
+- A field declared `StoredAs` a narrower type is stored at full precision in checkpoints instead of being
+  refused (decision 14); the declaration applies to visualization files.
+
+### Decisions
+
+14 is decided: checkpoints keep full precision, so that a restore is exact; StoredAs narrows
+visualization files only.
+
 ## 0.3.0 — 21 November 2026
 
 DOI [10.5281/zenodo.24421952](https://doi.org/10.5281/zenodo.24421952).
