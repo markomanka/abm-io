@@ -33,6 +33,15 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   (`fuzz/fuzz_manifest.cc`) and refuses names that could leave the directory.
 - `ToJson(const Schema&)`, the form in which a file carries its schema.
 
+### Fixed
+
+- Two writes of the same data could differ in bytes when they fell in different seconds: the root group,
+  and groups created on the way to a table, recorded times. Every group is now created without times, and
+  files use HDF5 1.8's object-header format whichever HDF5 builds them (HDF5 2.x already did; 1.10 started
+  from an older one), so the files are the same on every build. The test waits past a second between its
+  two writes, so a time stored anywhere fails it on every run. Seen on the Conda job on macOS 15 after
+  #68; it predated that pull request.
+
 ### Decisions
 
 13 is decided: variable-size fields are stored as values and offsets, as Apache Arrow does, not with HDF5's

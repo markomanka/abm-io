@@ -103,7 +103,16 @@ uint64_t RowsOf(hid_t set) {
 }  // namespace
 
 Status CreateFile(const std::string& path, Id* file, std::string* why) {
-  *file = Id(H5Fcreate(path.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT),
+  // The root group is created with the file, so it takes its "no times" from
+  // the file-creation list; groups and columns get theirs from Untimed.
+  Id fcpl(H5Pcreate(H5P_FILE_CREATE), H5Pclose);
+  Untimed(fcpl.get());
+  // The same object-header format whichever HDF5 builds the file: HDF5 2.x
+  // starts at 1.8's format by default and 1.10 at the oldest, whose root
+  // group differs.
+  Id fapl(H5Pcreate(H5P_FILE_ACCESS), H5Pclose);
+  H5Pset_libver_bounds(fapl.get(), H5F_LIBVER_V18, H5F_LIBVER_LATEST);
+  *file = Id(H5Fcreate(path.c_str(), H5F_ACC_TRUNC, fcpl.get(), fapl.get()),
              H5Fclose);
   return file->ok() ? Status::kOk
                     : Fail(Status::kIo, why, "cannot create " + path);
@@ -123,13 +132,33 @@ Status Group(hid_t parent, const std::string& path, bool create, Id* group,
   if (Exists(parent, path)) {
     *group = Id(H5Gopen2(parent, path.c_str(), H5P_DEFAULT), H5Gclose);
   } else if (create) {
-    Id lcpl(H5Pcreate(H5P_LINK_CREATE), H5Pclose);
-    H5Pset_create_intermediate_group(lcpl.get(), 1);
+    // One level at a time rather than with HDF5's intermediate-group option,
+    // which creates the groups on the way with default properties, and so
+    // with times.
     Id gcpl(H5Pcreate(H5P_GROUP_CREATE), H5Pclose);
     Untimed(gcpl.get());
-    *group = Id(
-        H5Gcreate2(parent, path.c_str(), lcpl.get(), gcpl.get(), H5P_DEFAULT),
-        H5Gclose);
+    std::size_t start = 0;
+    for (;;) {
+      const std::size_t slash = path.find('/', start);
+      const std::string prefix = path.substr(0, slash);
+      if (slash != std::string::npos && prefix.size() == start) {
+        start = slash + 1;  // a doubled or leading '/'
+        continue;
+      }
+      if (!Exists(parent, prefix)) {
+        Id made(H5Gcreate2(parent, prefix.c_str(), H5P_DEFAULT, gcpl.get(),
+                           H5P_DEFAULT),
+                H5Gclose);
+        if (!made.ok()) {
+          return Fail(Status::kIo, why, "cannot create group " + prefix);
+        }
+      }
+      if (slash == std::string::npos) {
+        break;
+      }
+      start = slash + 1;
+    }
+    *group = Id(H5Gopen2(parent, path.c_str(), H5P_DEFAULT), H5Gclose);
   } else {
     return Fail(Status::kCorrupt, why, "missing group " + path);
   }
