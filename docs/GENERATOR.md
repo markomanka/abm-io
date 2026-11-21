@@ -66,7 +66,11 @@ BioDynaMo:
 | `Real3` (`MathArray<real_t, 3>`) | an array of three floating-point elements |
 | `AgentUid` | a reference to an agent, as a 64-bit agent identifier |
 | `AgentPointer<T>` | a reference to an agent, as a 64-bit agent identifier |
-| `InlineVector<Behavior*, N>` | a polymorphic list of behaviours |
+| `InlineVector<Behavior*, N>` | a polymorphic list of behaviours, with `Size`, `At` and `Append` |
+
+The base of a polymorphic list also needs the concrete types that may appear in it, as `using Subtypes =
+std::tuple<…>` in its specialisation; `abm-gen` is to emit it from the behaviour classes it finds (issue
+#10), and until it does, the adapter writes it.
 
 `real_t` needs nothing: it is `double` or `float`, whichever BioDynaMo was built with. A member of a type
 neither known nor declared fails to compile, at the generated line that names the field.

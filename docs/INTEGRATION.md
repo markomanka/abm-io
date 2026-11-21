@@ -101,6 +101,12 @@ types.
   After loading or receiving, the simulator resolves identifiers back to agents.
 - Each stored object carries its type identifier. Lists of behaviours are stored as lists of
   (type identifier, record) pairs, so different behaviour types can share one list.
+- The base of such a list names the concrete types that may appear in it (`using Subtypes =
+  std::tuple<…>` in its `TypeTraits`), and must be polymorphic so that each element's own type can be told.
+  `ForEachElement` gives each element as its own type with its identifier, and `AppendElement` builds one
+  back from an identifier, the same walk whether the destination is a checkpoint or a message
+  (`abmio/visit.h`). An element of a type not listed is refused with its position, never stored as its
+  base; an identifier no listed type has is refused when reading.
 
 ### Agent identifiers
 
