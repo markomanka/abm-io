@@ -1,5 +1,8 @@
-# Labels of the self-hosted runners used by benchmarks.yml and hpc.yml (docs/QUALITY-GATES.md).
+# Labels of the self-hosted runners used by benchmarks.yml and hpc.yml (docs/QUALITY-GATES.md),
+# and GitHub-hosted labels newer than actionlint's own list (docs/QUALITY-GATES.md, "Platforms").
 self-hosted-runner:
   labels:
     - benchmark
     - hpc
+    - ubuntu-26.04
+    - macos-26

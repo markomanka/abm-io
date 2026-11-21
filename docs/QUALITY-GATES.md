@@ -10,8 +10,8 @@ the repository variables below.
 | Layer | Workflow · job | Runs on | When | Guards |
 | --- | --- | --- | --- | --- |
 | Policies (no global allocator hooks, SPDX headers) and formatting | `ci.yml` · Policy and format | GitHub-hosted | every push and PR | all |
-| Build matrix: Ubuntu 22.04 and 24.04 × GCC and Clang; macOS 15 | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
-| Build and tests with conda-forge packages (`environment.yml`): Ubuntu 24.04 and macOS 15 | `conda.yml` | GitHub-hosted | every push and PR | packaging |
+| Build matrix: Ubuntu 24.04 and 26.04 × GCC and Clang; macOS 15 | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
+| Build and tests with conda-forge packages (`environment.yml`): Ubuntu 24.04 and macOS 15; macOS 26 | `conda.yml` | GitHub-hosted | every push and PR; macOS 26 weekly and by hand | packaging |
 | Unit, corruption, codec and physics tests (CTest) | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
 | HDF5 tests (label `container`): the LZ4 filter, the binding comparison on the C API; with HighFive too in `conda.yml`, followed by `bench/h5binding/compare.py` | `ci.yml`, `conda.yml` | GitHub-hosted | every push and PR | checkpoints |
 | AddressSanitizer + UBSan | `ci.yml` · Sanitizers | GitHub-hosted | every push and PR | all |
@@ -27,6 +27,22 @@ the repository variables below.
 `CI passed` aggregates all `ci.yml` jobs; branch protection requires it. `conda.yml` is not part of it yet:
 it can join once it has run reliably, so that a shortage of macOS runners cannot block merges. All third-party actions are
 pinned to commit hashes of releases at least two weeks old; Dependabot proposes updates weekly.
+
+## Platforms
+
+The same policy holds in the BioDynaMo fork (`CI-COVERAGE.md` there), since the two are to be adopted
+together; a change to it is made in both repositories, by a pair of pull requests.
+
+- **Ubuntu: the two newest LTS releases GitHub hosts**, today 24.04 and 26.04, on every pull request.
+- **macOS 15 on every pull request**, through conda-forge.
+- **macOS 26 once a week**, on Mondays at 04:00 UTC on the default branch, and by hand, through
+  conda-forge. It reports and does not block merges, because macOS runners are often short.
+- **Both move together.** When GitHub hosts a new Ubuntu LTS or macOS release, both repositories take
+  it, and drop the oldest, in the same pair of pull requests.
+
+Here, Ubuntu 24.04 also keeps Ubuntu's HDF5 1.10 in the matrix, and 26.04 brings a newer HDF5 from Ubuntu
+itself; conda-forge provides HDF5 2.x. Ubuntu 22.04 was dropped on 21 November 2026, as in the fork on
+17 November. A macOS 15 build with Homebrew's packages also runs in `ci.yml`.
 
 ## Repository variables
 

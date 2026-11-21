@@ -36,9 +36,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # The two newest Ubuntu LTS releases and macOS 15, as in the BioDynaMo
+          # fork (docs/QUALITY-GATES.md, "Platforms").
           - { os: ubuntu-24.04, compiler: gcc, cxx: g++ }
           - { os: ubuntu-24.04, compiler: clang, cxx: clang++ }
-          - { os: ubuntu-22.04, compiler: gcc, cxx: g++ }
+          - { os: ubuntu-26.04, compiler: gcc, cxx: g++ }
+          - { os: ubuntu-26.04, compiler: clang, cxx: clang++ }
           - { os: macos-15, compiler: apple-clang, cxx: clang++ }
     runs-on: ${{ matrix.os }}
     steps:
