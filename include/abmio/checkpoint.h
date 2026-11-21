@@ -15,9 +15,11 @@
 //
 // Not yet written by this version, and refused with a message naming the
 // field rather than stored in a layout nobody agreed: nested records, lists of
-// behaviours, and fields declared StoredAs a narrower type. Nor does it yet
-// write under a temporary name with a manifest; a file is complete only once
-// Close has returned kOk.
+// behaviours, and fields declared StoredAs a narrower type.
+//
+// The file is written as <path>.tmp and renamed to <path> in Close, after
+// being flushed to disk, so it never appears half-written; a store of
+// checkpoints with a manifest and a pointer is in abmio/store.h.
 #pragma once
 #include <cstdint>
 #include <cstring>

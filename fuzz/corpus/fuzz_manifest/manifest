@@ -1,0 +1,4 @@
+{"abmio_manifest": 1, "checkpoint": "step-1234", "parts": [
+  {"name": "part-00000.h5", "bytes": 4096},
+  {"name": "part-00001.h5", "bytes": 0}
+]}

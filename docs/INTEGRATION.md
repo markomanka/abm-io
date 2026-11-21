@@ -270,6 +270,14 @@ of the things that note asks for, and which this provides.
   [FINDINGS.md](FINDINGS.md). The property is stated rather than the mechanism because rename is atomic
   on POSIX file systems and is not on most object stores;
   [STORAGE-BACKENDS.md](STORAGE-BACKENDS.md) records what would achieve it elsewhere.
+  On a file system the names are fixed: `<root>/<checkpoint>/part-00000.h5` and so on, one per writer,
+  each written as `….h5.tmp`; `<root>/<checkpoint>/manifest.json`, listing each part's name and size
+  (`{"abmio_manifest": 1, "checkpoint": …, "parts": [{"name": …, "bytes": …}]}`); and `<root>/latest`
+  (`{"abmio_pointer": 1, "checkpoint": …}`). Every file is flushed to disk before its rename and the
+  directory after it. A reader follows the pointer, refuses a manifest that names another checkpoint, and
+  refuses a part that is missing or whose size differs. Names are letters, digits, `.`, `_` and `-`, so
+  none read from these files can leave the directory. Nothing is deleted; which checkpoints to keep is
+  the simulator's choice.
 - **At large process counts, writers are grouped.** One file per process is the form that must always work,
   not the form to use at any scale: on a parallel file system, tens of thousands of files per checkpoint
   become a metadata bottleneck, and closing them can cost more than the step that produced them. Writers are

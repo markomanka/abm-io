@@ -5,6 +5,7 @@
 
 #include "abmio/checkpoint.h"
 #include "container/h5store.h"
+#include "durable.h"
 
 namespace abmio {
 namespace {
@@ -56,6 +57,8 @@ struct CheckpointWriter::Table {
 
 struct CheckpointWriter::Impl {
   h5::Id file;
+  std::string path;       // the final name, given at Close
+  std::string temporary;  // the name written to until then
   CheckpointOptions options;
   Schema schema;
   std::set<TypeId> described;
@@ -75,7 +78,9 @@ Status CheckpointWriter::Open(const std::string& path,
   }
   impl_.reset(new Impl);
   impl_->options = options;
-  Status s = h5::CreateFile(path, &impl_->file, why);
+  impl_->path = path;
+  impl_->temporary = path + ".tmp";
+  Status s = h5::CreateFile(impl_->temporary, &impl_->file, why);
   if (s != Status::kOk) {
     return s;
   }
@@ -256,7 +261,11 @@ Status CheckpointWriter::Close(std::string* why) {
   }
   schema = h5::StringColumn();
   impl_->file.Reset();
-  return s;
+  if (s != Status::kOk) {
+    return s;
+  }
+  // The file takes its final name only now, whole.
+  return durable::Replace(impl_->temporary, impl_->path, why);
 }
 
 }  // namespace abmio
