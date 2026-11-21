@@ -75,6 +75,13 @@ Status OpenFile(const std::string& path, Id* file, std::string* why);
 Status Group(hid_t parent, const std::string& path, bool create, Id* group,
              std::string* why);
 
+/// What a group holds under a name.
+enum class Member { kNone, kDataset, kGroup, kOther };
+Member MemberOf(hid_t group, const std::string& name);
+
+/// The names directly below a group, in name order.
+Status Members(hid_t group, std::vector<std::string>* names, std::string* why);
+
 Status WriteAttribute(hid_t object, const char* name, const std::string& value,
                       std::string* why);
 Status ReadAttribute(hid_t object, const char* name, std::string* value,

@@ -18,6 +18,13 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   entries from 0), as in Apache Arrow, both from `std::vector` and from a simulator's own container
   through `FieldTraits` (`Size` and `At`). Not yet written, and refused with a message naming the field:
   nested records, lists of behaviours and `StoredAs`. No manifest or temporary name yet.
+- `CheckpointReader` (`abmio/checkpoint.h`): reads tables and records back a block at a time, the reverse of
+  the writer, so that a round trip restores every field with the checkpoint role. It is strict, as resuming
+  must be: a table whose fields differ from the model's in name, kind, element type or count, or that holds
+  another type, is refused with the first difference named. Offsets are checked before use (from 0, never
+  decreasing, ending at the number of values), and booleans are read so that a damaged byte cannot make an
+  invalid `bool`. `FieldTraits` gains `Resize` for a simulator's own vector type. Not yet: permissive
+  reading for analysis, and the comparison of versions, digest and components that the strict resume adds.
 - `ToJson(const Schema&)`, the form in which a file carries its schema.
 
 ### Decisions
