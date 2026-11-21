@@ -6,11 +6,18 @@
 // the visitor protocol a block at a time, so the writer's memory is bounded by
 // fields × chunk and does not grow with the number of objects.
 //
+// A variable-size array becomes two columns in a group named after the field,
+// as in Apache Arrow: `values`, every object's elements one after another, and
+// `offsets`, one more entry than there are objects, starting at 0, so that
+// object i owns values[offsets[i], offsets[i + 1]) (docs/RATIONALE.md, entry
+// 13). Such a field bounds a block's memory by its total number of elements,
+// not by the chunk alone.
+//
 // Not yet written by this version, and refused with a message naming the
-// field rather than stored in a layout nobody agreed: variable-size arrays,
-// nested records, lists of behaviours, and fields declared StoredAs a
-// narrower type. Nor does it yet write under a temporary name with a
-// manifest; a file is complete only once Close has returned kOk.
+// field rather than stored in a layout nobody agreed: nested records, lists of
+// behaviours, and fields declared StoredAs a narrower type. Nor does it yet
+// write under a temporary name with a manifest; a file is complete only once
+// Close has returned kOk.
 #pragma once
 #include <cstdint>
 #include <memory>
@@ -34,9 +41,23 @@ namespace detail {
 
 /// One field's values for one block of objects.
 struct ColumnBuffer {
-  std::vector<char> bytes;  ///< fixed-size fields, element after element
+  std::vector<char> bytes;  ///< fixed-size fields, element after element;
+                            ///< variable-size arrays, every element in turn
   std::vector<std::string> strings;  ///< string fields
+  std::vector<uint64_t> lengths;     ///< variable-size arrays, one per object
 };
+
+/// Whether a member is a variable-size array of elements (Kind::kVector).
+template <class M>
+constexpr bool IsVectorOfElements() {
+  if constexpr (HasFieldTraits<M>::value) {
+    return FieldTraits<M>::kKind == Kind::kVector;
+  } else if constexpr (IsStdVector<M>::value) {
+    return kIsElement<typename M::value_type>;
+  } else {
+    return false;
+  }
+}
 
 struct ByteAppender {
   std::vector<char>* out;
@@ -65,6 +86,24 @@ class BlockCollector {
     ColumnBuffer& column = (*columns_)[next_++];
     if constexpr (std::is_same_v<M, std::string>) {
       column.strings.push_back(member);
+    } else if constexpr (IsVectorOfElements<M>()) {
+      ByteAppender append{&column.bytes};
+      if constexpr (HasFieldTraits<M>::value) {
+        using Traits = FieldTraits<M>;
+        const std::size_t size = Traits::Size(member);
+        for (std::size_t i = 0; i < size; ++i) {
+          typename Traits::Element element = Traits::At(member, i);
+          append(element);
+        }
+        column.lengths.push_back(size);
+      } else {
+        // By value, so that std::vector<bool>'s proxies work too.
+        for (std::size_t i = 0; i < member.size(); ++i) {
+          typename M::value_type element = member[i];
+          append(element);
+        }
+        column.lengths.push_back(member.size());
+      }
     } else {
       ByteAppender append{&column.bytes};
       PerElement<ByteAppender> elements(append);
@@ -121,6 +160,7 @@ class CheckpointWriter {
       for (detail::ColumnBuffer& column : block) {
         column.bytes.clear();
         column.strings.clear();
+        column.lengths.clear();
       }
       detail::BlockCollector collect(&block);
       for (uint64_t i = 0; i < rows; ++i) {

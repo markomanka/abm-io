@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
+#include <cstdint>
 #include <set>
+#include <vector>
 
 #include "abmio/checkpoint.h"
 #include "container/h5store.h"
@@ -14,15 +16,41 @@ Status Fail(Status s, std::string* why, const std::string& message) {
   return s;
 }
 
+// The group of a variable-size array: its elements, and offsets that start
+// with 0 so that an empty table already has its one entry.
+Status CreateVector(hid_t parent, const FieldDescription& f,
+                    const h5::ColumnLayout& layout, h5::Column* values,
+                    h5::Column* offsets, std::string* why) {
+  h5::Id group;
+  Status s = h5::Group(parent, f.name, true, &group, why);
+  if (s == Status::kOk) {
+    s = h5::Column::Create(group.get(), "values", f.element, 1, layout, values,
+                           why);
+  }
+  if (s == Status::kOk) {
+    s = h5::Column::Create(group.get(), "offsets", ElementType::kUInt64, 1,
+                           layout, offsets, why);
+  }
+  if (s == Status::kOk) {
+    const uint64_t zero = 0;
+    s = offsets->Append(&zero, 1, why);
+  }
+  return s;
+}
+
 }  // namespace
 
 struct CheckpointWriter::Table {
   std::string path;
   std::string type;
   std::vector<FieldDescription> fields;
-  // One of the two is used per field, by its kind; the other stays empty.
+  // Used per field by its kind; the others stay empty. A variable-size array
+  // keeps its elements in `columns` and its offsets in `offsets`, and
+  // `totals` holds its last offset so far.
   std::vector<h5::Column> columns;
   std::vector<h5::StringColumn> strings;
+  std::vector<h5::Column> offsets;
+  std::vector<uint64_t> totals;
   uint64_t rows = 0;
 };
 
@@ -101,7 +129,7 @@ Status CheckpointWriter::BeginTable(const std::string& path,
                         "write yet");
       }
       if (f.kind != Kind::kScalar && f.kind != Kind::kArray &&
-          f.kind != Kind::kString) {
+          f.kind != Kind::kVector && f.kind != Kind::kString) {
         return Fail(Status::kBadSchema, why,
                     where + " is a " + ToString(f.kind) +
                         ", which checkpoints do not write yet");
@@ -124,8 +152,18 @@ Status CheckpointWriter::BeginTable(const std::string& path,
   layout.lz4 = impl_->options.lz4;
   t->columns.resize(t->fields.size());
   t->strings.resize(t->fields.size());
+  t->offsets.resize(t->fields.size());
+  t->totals.assign(t->fields.size(), 0);
   for (std::size_t i = 0; i < t->fields.size(); ++i) {
     const FieldDescription& f = t->fields[i];
+    if (f.kind == Kind::kVector) {
+      s = CreateVector(group.get(), f, layout, &t->columns[i], &t->offsets[i],
+                       why);
+      if (s != Status::kOk) {
+        return s;
+      }
+      continue;
+    }
     s = f.kind == Kind::kString
             ? h5::StringColumn::Create(group.get(), f.name, layout.chunk_rows,
                                        &t->strings[i], why)
@@ -162,6 +200,34 @@ Status CheckpointWriter::AppendBlock(Table* table,
         return Fail(Status::kBadSchema, why, mismatch + ": " + f.name);
       }
       s = table->strings[i].Append(block[i].strings, why);
+    } else if (f.kind == Kind::kVector) {
+      if (block[i].lengths.size() != rows) {
+        return Fail(Status::kBadSchema, why, mismatch + ": " + f.name);
+      }
+      std::vector<uint64_t> ends(rows);
+      uint64_t total = table->totals[i];
+      uint64_t elements = 0;
+      for (uint64_t r = 0; r < rows; ++r) {
+        const uint64_t length = block[i].lengths[r];
+        if (length > UINT64_MAX - total) {
+          return Fail(Status::kBadSchema, why,
+                      f.name + " has more elements than its offsets can count");
+        }
+        total += length;
+        elements += length;
+        ends[r] = total;
+      }
+      if (block[i].bytes.size() / SizeOf(f.element) != elements ||
+          block[i].bytes.size() % SizeOf(f.element) != 0) {
+        return Fail(Status::kBadSchema, why, mismatch + ": " + f.name);
+      }
+      s = table->columns[i].Append(block[i].bytes.data(), elements, why);
+      if (s == Status::kOk) {
+        s = table->offsets[i].Append(ends.data(), rows, why);
+      }
+      if (s == Status::kOk) {
+        table->totals[i] = total;
+      }
     } else {
       if (block[i].bytes.size() != rows * f.count * SizeOf(f.element)) {
         return Fail(Status::kBadSchema, why, mismatch + ": " + f.name);
