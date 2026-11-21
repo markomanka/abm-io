@@ -12,9 +12,9 @@ project: validating against a real simulator is part of what 1.0.0 means, not of
 | Version | What it delivers | Milestone | State |
 | --- | --- | --- | --- |
 | 0.1.0 | The first public version: the exchange prototype, the codecs, the test bed, the quality gates | 0 | released 28 October 2026 |
-| 0.2.0 | The model: type and field descriptions with roles, identifiers, the visitor protocol, `abm-gen`, the five record types with provenance and lineage, the LZ4 filter registered with HDF5, and the Rust decoder experiment with its proofs | 1 | this release |
-| 0.3.0 | Checkpoints: the writer and the reader, the layout of `docs/INTEGRATION.md`, chunk-bounded memory, the manifest and the visibility rule, the strict resume | 2 | next |
-| 0.4.0 | Exchange as a library API on the schema, with delta encoding per neighbour | 3 | |
+| 0.2.0 | The model: type and field descriptions with roles, identifiers, the visitor protocol, `abm-gen`, the five record types with provenance and lineage, the LZ4 filter registered with HDF5, and the Rust decoder experiment with its proofs | 1 | released 8 November 2026 |
+| 0.3.0 | Checkpoints: the writer and the reader, the layout of `docs/INTEGRATION.md`, chunk-bounded memory, the manifest and the visibility rule, the strict resume | 2 | released 21 November 2026 |
+| 0.4.0 | Exchange as a library API on the schema, with delta encoding per neighbour | 3 | next |
 | 0.5.0 | Visualization files: VTKHDF for agents and continuum fields | 4 | |
 | 0.6.0 | Adapters: BioDynaMo through `abm-gen`, PhysiCell by hand, MultiCellDS in and out | 5 | |
 | 0.7.0 | Packaging: install rules, a CMake package, conda-forge and Spack | 6 | |
