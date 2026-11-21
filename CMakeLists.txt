@@ -110,7 +110,8 @@ if(ABMIO_BUILD_TESTS)
   if(ABMIO_HDF5)
     add_executable(abmio_hdf5_tests tests/h5lz4_test.cc tests/h5binding_test.cc tests/h5store_test.cc
                                     tests/checkpoint_writer_test.cc tests/checkpoint_reader_test.cc
-                                    tests/store_test.cc tests/resume_test.cc)
+                                    tests/store_test.cc tests/resume_test.cc
+                                    tests/checkpoint_acceptance_test.cc)
     target_include_directories(abmio_hdf5_tests PRIVATE src)
     target_link_libraries(abmio_hdf5_tests PRIVATE abmio abmio_h5binding GTest::gtest_main abmio_flags)
     gtest_discover_tests(abmio_hdf5_tests DISCOVERY_TIMEOUT 120 PROPERTIES LABELS container)

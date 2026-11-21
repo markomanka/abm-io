@@ -39,6 +39,11 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   manifest and pointer are JSON of a fixed shape, read by a strict parser that is fuzzed
   (`fuzz/fuzz_manifest.cc`) and refuses names that could leave the directory.
 - `ToJson(const Schema&)`, the form in which a file carries its schema.
+- The acceptance test of milestone 2 (`tests/checkpoint_acceptance_test.cc`, #73): a small simulation with
+  agents, variable-size fields, random streams, components and lineage is saved through the store in two
+  parts, restored with the strict resume and continued, and ends bit for bit in the state of the same run
+  without stopping; a checkpoint killed before its commit leaves the previous one to restore from; a
+  changed simulator stops the restore.
 
 ### Fixed
 
