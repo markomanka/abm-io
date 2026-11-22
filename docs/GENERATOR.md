@@ -126,6 +126,29 @@ On headers that reach the compiler's intrinsics, as BioDynaMo's `RegulatoryNetwo
 define functions that Clang treats as built in, and do not parse. The miniature BioDynaMo in
 `tests/generator` parses with either compiler.
 
+## BioDynaMo's own classes
+
+`abm-gen` describes BioDynaMo's ten agent and behaviour classes and their two bases, twelve types, from the
+fork's headers alone (`scripts/abm-gen-biodynamo.sh`, at the commit in
+`tests/generator/biodynamo/FORK_COMMIT`). The output, checked by hand against the headers, is
+`tests/generator/biodynamo/expected.txt`. Most members have a shape already, given the adapter's types
+above. Seven do not, and an eighth needs a check; how each is handled was decided on 22 November 2026:
+
+| Member | What it is | Handled by |
+| --- | --- | --- |
+| `GeneRegulation::first_derivatives_`, `RegulatoryNetwork::rhs_`, `jacob_`, `out_` | the model's equations, as `std::function` | omitted (side file); the behaviour is to store a name per function, and the model registers its functions by name before restoring |
+| `Secretion::mode_`, `RegulatoryNetwork::method_` | enumerations | stored as the underlying integer, with the enumerator names that `abm-gen` reads from the header, so that a reordered enumeration is caught on resume |
+| `Chemotaxis::dgrid_`, `Secretion::dgrid_` | a pointer to a diffusion grid | stored as the grid's substance identifier, with a table of identifiers and substance names once per checkpoint; the adapter looks the grid up on restore |
+| `RegulatoryNetwork::current_species_`, `previous_species_` | Boost uBLAS vectors | the adapter's `FieldTraits`, as variable-size arrays; see below |
+| `NeuronSoma::daughters_coord_` | `std::unordered_map<AgentUid, Real3>` | maps in the library: keys and values with offsets, sorted by key so that files stay identical in bytes; the soma only looks entries up, so the order does not matter on restore |
+| `Agent::box_idx_` | the agent's box in the process's grid | to be checked: every environment update sets it from the position, so it is probably transient, and it must never travel to another process |
+
+**An ODE network restores exactly.** BioDynaMo's current backup, as of the fork at `73d53c6` (21 November
+2026), does not save `RegulatoryNetwork`'s two species vectors or its solver choice: they sit in a block of
+the header that its serialization never sees, so a restored network does not have its ODE state back.
+Through abm-io they are stored like any other field, and the adapter's acceptance test, that a restored
+run ends exactly like an uninterrupted one, is to cover them (issue #19).
+
 ## The build
 
 CMake regenerates the header when the model's headers or the side file change. For BioDynaMo this hooks into
@@ -138,6 +161,11 @@ CMake regenerates the header when the model's headers or the side file change. F
   Python tests compare the output and check every error; a C++ test compiles the generated header and checks
   that it describes a valid schema and drives the data visitors. `-DABMIO_BUILD_GENERATOR_TESTS=ON` builds
   them; the CI job "Generator (abm-gen)" runs them.
-- **In BioDynaMo's CI (issue #10):** BioDynaMo's 11 agent and behaviour classes and the 51 in its demos and
-  tests. The generated descriptions must match hand-checked ones, and the generated header must compile
-  against BioDynaMo. Only there are BioDynaMo and ROOT installed.
+- **On BioDynaMo's headers, in abm-io's CI (issue #10):** the job "abm-gen on BioDynaMo's classes" of the
+  Conda workflow fetches the fork's `src/` at the pinned commit, takes the headers of BioDynaMo's current
+  dependencies and Clang 18 from conda-forge, builds nothing, and compares the output with
+  `tests/generator/biodynamo/expected.txt`.
+  Moving the pin means regenerating that file (`scripts/abm-gen-biodynamo.sh BDM_DIR OUT`) and checking the
+  difference by hand.
+- **Later, against a built BioDynaMo:** the generated header must compile there, and the classes in its
+  demos and tests are described as well. That belongs with the adapter (issue #19).
