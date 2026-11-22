@@ -107,7 +107,12 @@ python3 tools/abm-gen/abm_gen.py --out generated.h [--side units.yaml] [--includ
 
 It asks the C++ compiler (`--cxx`, by default `$CXX`) for its include directories, which libclang needs,
 and reports errors with the class and member concerned: a macro naming the wrong base, a class template, an
-unknown entry in the side file, or a header that does not parse.
+unknown entry in the side file, or a header that does not parse, naming the file the error is in.
+
+On headers that reach the compiler's intrinsics, as BioDynaMo's `RegulatoryNetwork` does through Boost,
+`--cxx` must be a Clang of libclang's major version (18 with the pinned package): GCC's intrinsic headers
+define functions that Clang treats as built in, and do not parse. The miniature BioDynaMo in
+`tests/generator` parses with either compiler.
 
 ## The build
 
