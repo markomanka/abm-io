@@ -56,3 +56,39 @@ jobs:
         run: |
           micromamba install -y -n abm-io h5py hdf5plugin
           python bench/h5binding/compare.py build --agents 200000
+
+  # abm-gen on the BioDynaMo fork's own classes, from its headers alone (issue #10,
+  # docs/GENERATOR.md, "BioDynaMo's own classes"). Text only, so Linux is enough.
+  generator-biodynamo:
+    name: abm-gen on BioDynaMo's classes
+    if: github.event_name != 'schedule' && !inputs.newest_macos
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # ROOT's and Boost's headers, and a Clang of libclang's major version with
+      # GCC 14's C++ library (GCC 16's uses built-ins Clang 18 lacks in C++20).
+      - uses: mamba-org/setup-micromamba@f457c30a868e4760d3a6fcea5f25dc655b8edf39 # v3.2.1
+        with:
+          environment-name: abm-gen-biodynamo
+          create-args: >-
+            root_base=6.40.04 libboost-headers=1.92.0 clangxx=18.1.8
+            libstdcxx-devel_linux-64=14.4.0 python=3.12
+          init-shell: bash
+          cache-environment: true
+      - name: Python packages for abm-gen (pinned by hash)
+        run: python -m pip install --require-hashes -r tools/abm-gen/requirements.txt
+      - name: The fork's headers at the pinned commit (no build)
+        run: |
+          git init -q "$RUNNER_TEMP/biodynamo"
+          cd "$RUNNER_TEMP/biodynamo"
+          git remote add origin https://github.com/markomanka/biodynamo
+          git sparse-checkout set src third_party/cpptoml
+          git fetch -q --depth 1 --filter=blob:none origin "$(cat "$GITHUB_WORKSPACE/tests/generator/biodynamo/FORK_COMMIT")"
+          git checkout -q FETCH_HEAD
+      - name: Generate and compare with the expected output
+        run: scripts/abm-gen-biodynamo.sh "$RUNNER_TEMP/biodynamo"

@@ -25,6 +25,10 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   that is not empty. With this the writer and reader refuse no kind of field.
 - `abm-gen`: `omit: true` in the side file leaves a member out of the description, for members that are code
   rather than state, such as a `std::function` (part of #10).
+- `abm-gen` on BioDynaMo's own classes in CI (part of #10): the Conda workflow fetches the fork's headers at
+  a pinned commit and compares the output for its twelve agent and behaviour types with a hand-checked
+  expected output. `docs/GENERATOR.md` lists the members that need more than a shape and how each is
+  handled, as decided on 22 November 2026.
 
 ### Changed
 

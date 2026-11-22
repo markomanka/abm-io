@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: Apache-2.0
+# Side file for BioDynaMo's own classes (issue #10). The std::function members hold a
+# model's equations: code, not state. Each behaviour is to store a name per function,
+# and the model registers its functions by name before restoring (docs/GENERATOR.md).
+bdm::GeneRegulation:
+  first_derivatives: {omit: true}
+bdm::RegulatoryNetwork:
+  rhs: {omit: true}
+  jacob: {omit: true}
+  out: {omit: true}
