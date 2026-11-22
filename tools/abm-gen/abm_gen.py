@@ -89,7 +89,7 @@ def kind(cursor):
     """The cursor's kind, or None for a kind these Python bindings do not know.
 
     libclang's library can report kinds newer than its bindings, for example on
-    ROOT's or Boost's headers; such cursors are never classes or fields."""
+    the headers of BioDynaMo's current dependencies; such cursors are never classes or fields."""
     try:
         return cursor.kind
     except ValueError:
