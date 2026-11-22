@@ -7,8 +7,10 @@ Checkpoints, exchange of agents between processes, and files for visualization, 
 multicellular biology. abm-io is built for BioDynaMo and PhysiCell first, and is meant to be adopted by other
 simulators as well.
 
-**Status:** early development (0.1). The exchange codecs work, are tested and fuzzed; the schema, checkpoint
-files, visualization files and the adapters are being built. The API and the file formats will change before 1.0.
+**Status:** early development (0.3). The exchange codecs work, are tested and fuzzed; the schema, the
+generator `abm-gen` and checkpoint files are released, and a restored run ends exactly like an uninterrupted
+one. Exchange as a library API, visualization files and the adapters are being built (`docs/VERSIONS.md`).
+The API and the file formats will change before 1.0.
 
 ## Why
 
@@ -81,7 +83,7 @@ Contributions are welcome; see `CONTRIBUTING.md`. Report vulnerabilities private
 ## Citing
 
 Cite abm-io with the DOI https://doi.org/10.5281/zenodo.23731697, which always resolves to the latest version. Each
-release also has its own DOI; version 0.1.0 is https://doi.org/10.5281/zenodo.23731698. `CITATION.cff` has the details.
+release also has its own DOI; version 0.3.0 is https://doi.org/10.5281/zenodo.24421952. `CITATION.cff` has the details.
 
 ## Licence
 
