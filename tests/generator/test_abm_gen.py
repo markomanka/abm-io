@@ -109,6 +109,12 @@ class Errors(unittest.TestCase):
             generator().parse(header("class Z : public bdm::Agent { int x_ };\n"))
         self.assertIn("case.h", str(e.exception))
 
+    def test_parse_errors_name_the_file_they_are_in(self):
+        broken = header("class W { int w_ };\n")
+        with self.assertRaises(abm_gen.GeneratorError) as e:
+            generator().parse(header(f'#include "{broken}"\n'))
+        self.assertIn(broken + ": 2:", str(e.exception))
+
     def test_class_templates_are_refused(self):
         with self.assertRaises(abm_gen.GeneratorError) as e:
             generator().parse(header("template <class T>\nclass W : public bdm::Agent {\n"

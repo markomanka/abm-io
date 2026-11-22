@@ -32,6 +32,13 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 - A field declared `StoredAs` a narrower type is stored at full precision in checkpoints instead of being
   refused (decision 14); the declaration applies to visualization files.
 
+### Fixed
+
+- `abm-gen` on BioDynaMo's own headers (part of #10): cursors of a kind libclang's Python bindings do not
+  know, which ROOT's and Boost's headers produce, are skipped instead of stopping the generator with a
+  `ValueError`, and a parse error names the file it is in rather than the header given on the command
+  line. `docs/GENERATOR.md` says which compiler to name with `--cxx` on such headers.
+
 ### Decisions
 
 14 is decided: checkpoints keep full precision, so that a restore is exact; StoredAs narrows

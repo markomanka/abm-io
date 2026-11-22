@@ -85,10 +85,21 @@ def flags_from_compile_commands(path):
     return kept
 
 
+def kind(cursor):
+    """The cursor's kind, or None for a kind these Python bindings do not know.
+
+    libclang's library can report kinds newer than its bindings, for example on
+    ROOT's or Boost's headers; such cursors are never classes or fields."""
+    try:
+        return cursor.kind
+    except ValueError:
+        return None
+
+
 def qualified_name(cursor):
     parts = []
     c = cursor
-    while c is not None and c.kind != ci.CursorKind.TRANSLATION_UNIT:
+    while c is not None and kind(c) != ci.CursorKind.TRANSLATION_UNIT:
         if c.spelling:
             parts.append(c.spelling)
         c = c.semantic_parent
@@ -145,18 +156,19 @@ class Generator:
         tu = index.parse(header, args=["-x", "c++"] + self.flags, options=options)
         errors = [d for d in tu.diagnostics if d.severity >= ci.Diagnostic.Error]
         if errors:
-            raise GeneratorError("\n".join(f"{header}: {d.location.line}:{d.location.column}: "
+            raise GeneratorError("\n".join(f"{d.location.file.name if d.location.file else header}: "
+                                           f"{d.location.line}:{d.location.column}: "
                                            f"{d.spelling}" for d in errors[:10]))
         path = os.path.realpath(header)
         # Macro uses in every file the parser saw, so that the bases of a model's
         # classes keep their own versions even when defined in other headers.
         uses = [(os.path.realpath(c.location.file.name), c.location.offset, macro_arguments(c))
                 for c in tu.cursor.get_children()
-                if c.kind == ci.CursorKind.MACRO_INSTANTIATION and c.spelling in self.macros
+                if kind(c) == ci.CursorKind.MACRO_INSTANTIATION and c.spelling in self.macros
                 and c.location.file]
         files = {f for f, _, _ in uses} | {path}
         defs = [c for c in tu.cursor.walk_preorder()
-                if c.kind in (ci.CursorKind.CLASS_DECL, ci.CursorKind.STRUCT_DECL,
+                if kind(c) in (ci.CursorKind.CLASS_DECL, ci.CursorKind.STRUCT_DECL,
                               ci.CursorKind.CLASS_TEMPLATE)
                 and c.location.file and os.path.realpath(c.location.file.name) in files]
         marked = []
@@ -166,7 +178,7 @@ class Generator:
             if not inner:
                 continue
             cls = max(inner, key=lambda c: c.extent.start.offset)  # the innermost
-            if cls.kind == ci.CursorKind.CLASS_TEMPLATE:
+            if kind(cls) == ci.CursorKind.CLASS_TEMPLATE:
                 if f == path:
                     raise GeneratorError(f"{qualified_name(cls)}: class templates are not "
                                          "supported")
@@ -187,7 +199,7 @@ class Generator:
             return
         args = self.marks.get(cls.get_usr())
         written_base, version = (args[1].replace(" ", ""), args[2]) if args else ("", "1")
-        bases = [c for c in cls.get_children() if c.kind == ci.CursorKind.CXX_BASE_SPECIFIER]
+        bases = [c for c in cls.get_children() if kind(c) == ci.CursorKind.CXX_BASE_SPECIFIER]
         base = ""
         if bases:
             decl = bases[0].type.get_declaration()
@@ -203,7 +215,7 @@ class Generator:
         t = Type(name, base, version)
         filename = cls.location.file.name
         for c in cls.get_children():
-            if c.kind != ci.CursorKind.FIELD_DECL:
+            if kind(c) != ci.CursorKind.FIELD_DECL:
                 continue
             line = self._source_line(filename, c.location.line)
             if "//!" in line[c.location.column - 1:]:
