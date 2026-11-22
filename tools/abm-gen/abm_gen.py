@@ -233,11 +233,20 @@ class Generator:
                 if field_name not in members:
                     raise GeneratorError(f"side file: {type_name} has no field {field_name}")
                 props = props or {}
-                unknown = set(props) - {"unit", "roles"}
+                unknown = set(props) - {"unit", "roles", "omit"}
                 if unknown:
                     raise GeneratorError(f"side file: {type_name}.{field_name}: unknown "
                                          f"keys {sorted(unknown)}")
                 m = members[field_name]
+                if "omit" in props:
+                    if props["omit"] is not True:
+                        raise GeneratorError(f"side file: {type_name}.{field_name}: omit "
+                                             "takes only true")
+                    if set(props) != {"omit"}:
+                        raise GeneratorError(f"side file: {type_name}.{field_name}: an "
+                                             "omitted field takes no unit or roles")
+                    self.types[type_name].members.remove(m)
+                    continue
                 m.unit = str(props.get("unit", ""))
                 if "roles" in props:
                     roles = props["roles"] or []
@@ -300,7 +309,7 @@ def main(argv=None):
                                             "from C++ headers (docs/GENERATOR.md).")
     p.add_argument("headers", nargs="+")
     p.add_argument("--out", required=True)
-    p.add_argument("--side", help="YAML file with units and roles per field")
+    p.add_argument("--side", help="YAML file with units, roles and omissions per field")
     p.add_argument("--include", action="append", default=None,
                    help="header to include in the output (default: each input header's name)")
     p.add_argument("--compile-commands")
