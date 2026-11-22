@@ -23,6 +23,8 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   `AppendElement`. The reader refuses a list referring to more or fewer objects than the subtype tables
   hold, a type the model does not list, a nested field missing on either side, and reading into a list
   that is not empty. With this the writer and reader refuse no kind of field.
+- `abm-gen`: `omit: true` in the side file leaves a member out of the description, for members that are code
+  rather than state, such as a `std::function` (part of #10).
 
 ### Changed
 

@@ -95,6 +95,18 @@ bdm::Cell:
 
 A field without an entry has no unit and all roles. Units are recorded, never converted.
 
+`omit: true` leaves a member out of the description altogether, for members that are code rather than
+state, such as a `std::function` holding a model's equations: no file can hold a C++ closure, and its type
+has no shape. A field with no roles (`roles: []`) is different: it is still described, so its type must
+have a shape. The simulator restores an omitted member itself; for BioDynaMo's behaviours that hold
+equations, the plan is that the behaviour stores a name for each function, which is stored like any other
+field, and the model registers its functions by name before restoring.
+
+```yaml
+bdm::GeneRegulation:
+  first_derivatives: {omit: true}
+```
+
 ## Running it
 
 `abm-gen` needs Python 3 with the `libclang` and `PyYAML` packages: `pip install -r

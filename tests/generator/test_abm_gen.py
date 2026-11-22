@@ -87,6 +87,15 @@ class Errors(unittest.TestCase):
         self.assertIn("unknown roles ['send']",
                       self.side_error({"bdm::Cell": {"volume": {"roles": ["send"]}}}))
 
+    def test_omitted_fields_are_left_out(self):
+        self.gen.apply_side_file({"bdm::Cell": {"volume": {"omit": True}}})
+        cell = next(t for t in self.gen.types.values() if t.name == "bdm::Cell")
+        self.assertNotIn("volume", [m.field for m in cell.members])
+        self.assertIn("omit takes only true",
+                      self.side_error({"bdm::Cell": {"diameter": {"omit": False}}}))
+        self.assertIn("an omitted field takes no unit or roles",
+                      self.side_error({"bdm::Cell": {"diameter": {"omit": True, "unit": "um"}}}))
+
     def test_roles_can_be_none(self):
         self.gen.apply_side_file({"bdm::Cell": {"volume": {"roles": []}}})
         text = self.gen.render(["bdm_like.h"], ["bdm_like.h"])
