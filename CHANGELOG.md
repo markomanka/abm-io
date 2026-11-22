@@ -25,6 +25,10 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
   that is not empty. With this the writer and reader refuse no kind of field.
 - `abm-gen`: `omit: true` in the side file leaves a member out of the description, for members that are code
   rather than state, such as a `std::function` (part of #10).
+- `abm-gen` on BioDynaMo's own classes in CI (part of #10): the Conda workflow fetches the fork's headers at
+  a pinned commit and compares the output for its twelve agent and behaviour types with a hand-checked
+  expected output. `docs/GENERATOR.md` lists the members that need more than a shape and how each is
+  handled, as decided on 22 November 2026.
 
 ### Changed
 
@@ -37,9 +41,9 @@ numbered as in [docs/RATIONALE.md](docs/RATIONALE.md); measurements are the sect
 ### Fixed
 
 - `abm-gen` on BioDynaMo's own headers (part of #10): cursors of a kind libclang's Python bindings do not
-  know, which ROOT's and Boost's headers produce, are skipped instead of stopping the generator with a
-  `ValueError`, and a parse error names the file it is in rather than the header given on the command
-  line. `docs/GENERATOR.md` says which compiler to name with `--cxx` on such headers.
+  know, which the headers of BioDynaMo's current dependencies produce, are skipped instead of stopping the
+  generator with a `ValueError`, and a parse error names the file it is in rather than the header given on
+  the command line. `docs/GENERATOR.md` says which compiler to name with `--cxx` on such headers.
 
 ### Decisions
 

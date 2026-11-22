@@ -12,6 +12,7 @@ the repository variables below.
 | Policies (no global allocator hooks, SPDX headers) and formatting | `ci.yml` · Policy and format | GitHub-hosted | every push and PR | all |
 | Build matrix: Ubuntu 24.04 and 26.04 × GCC and Clang; macOS 15 | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
 | Build and tests with conda-forge packages (`environment.yml`): Ubuntu 24.04 and macOS 15; macOS 26 | `conda.yml` | GitHub-hosted | every push and PR; macOS 26 weekly and by hand | packaging |
+| `abm-gen` on the BioDynaMo fork's own classes, from its headers at a pinned commit, against a hand-checked expected output | `conda.yml` · abm-gen on BioDynaMo's classes | GitHub-hosted | every push and PR (not the macOS 26 runs) | generator |
 | Unit, corruption, codec and physics tests (CTest) | `ci.yml` · Build and test | GitHub-hosted | every push and PR | all |
 | HDF5 tests (label `container`): the LZ4 filter, the binding comparison on the C API; with HighFive too in `conda.yml`, followed by `bench/h5binding/compare.py` | `ci.yml`, `conda.yml` | GitHub-hosted | every push and PR | checkpoints |
 | AddressSanitizer + UBSan | `ci.yml` · Sanitizers | GitHub-hosted | every push and PR | all |
